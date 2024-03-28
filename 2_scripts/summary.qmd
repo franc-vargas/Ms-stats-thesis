@@ -1,0 +1,303 @@
+---
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r libraries}
+
+#| echo: false
+#| warnings: false
+
+library(sp)
+library(sf)
+library(stars)
+library(tidyverse)
+library(leaflet)
+library(patchwork)
+```
+
+```{r carga-datos}
+#| echo: false
+
+sites <- read_rds("1_data/joined_data.rds") 
+sites <- sites |> mutate(adultos_totales = promHo + promAm )
+shape <- read_rds("1_data/sites_coordinates.rds")
+
+shape@data$coordinates <- shape@coords
+
+site_vector <- sites |> 
+  filter((Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS")) |> 
+  pull(Codigo) |> 
+  unique()
+
+shape2 <- subset(shape@data, N_CODIGOCE %in% site_vector)
+
+shape_lagos <- subset(shape2, grepl("LAGOS", REGION))
+shape_aysen <- subset(shape2, grepl("AYSÉN", REGION))
+
+chile <- chilemapas::generar_regiones()
+lagos_base <- chile |> filter(codigo_region == 10)
+aysen_base <- chile |> filter(codigo_region == 11)
+
+p_lagos <- 
+  ggplot(lagos_base)+
+  geom_sf()+
+  geom_point(data = shape_lagos, aes(x = coordinates[,1],
+                 y = coordinates[,2],
+                # colour = COMUNA
+                 ),
+             alpha = 0.3)+
+  coord_sf(ylim = c(-44, -41.3 ), xlim = c(-74.8, -71.5))+
+  theme_bw()+
+  labs(x = "longitud",
+       y = "latitud")+
+  labs(subtitle = "Los Lagos")+
+  theme(axis.text.x = element_text(size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position = "bottom",
+        legend.text = element_text(size = 6),
+        legend.title = element_blank(),
+        legend.key.spacing.y = unit(0, "lines"))
+
+p_aysen <- 
+  ggplot(aysen_base)+
+  geom_sf()+
+  geom_point(data = shape_aysen, aes(x = coordinates[,1],
+                 y = coordinates[,2],
+                 #colour = COMUNA
+                 ),
+             alpha = 0.3)+
+  coord_sf(xlim = c(-75.6, -71), ylim = c(-46.5, -43.6))+
+  labs(x = "longitud",
+       y = "latitud")+
+  theme_bw()+
+  labs(subtitle = "Aysén")+
+  theme(axis.text.x = element_text(size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position = "bottom",
+        legend.text = element_text(size = 6),
+        legend.title = element_blank())
+
+```
+
+# Descripcioń general
+
+En la actualidad tenemos `r nrow(shape2)` concesiones otorgadas para Salmón del Atlántico y Trucha Arcoíris entre la región de Los Lagos (X), Aysén (XI) y Magallanes (XII). Las principales regiones en las que la industria se ha establecido son la X y XI.
+
+Estas concesiones han sido agrupadas en un total de `r sum(length(unique(shape_lagos$AGRUPCONCE)),length(unique(shape_aysen$AGRUPCONCE)))` ACS o Barrios, las cuales fueron creadas por el Servicio Nacional de Pesca y Acuicultura en el año 2010 posterior a la crisis del virus ISA y, lo cual permite generar estrategias de baños antiparasitarios, estrategias de cosecha y períodos de descanso coordinado para cada una de las ACS.
+
+```{r}
+#| fig-cap: "Distribución de Concesiones por Región"
+#| fig-height: 12
+#| fig-width: 9
+#| label: fig-concesiones-region
+
+plots_region <- wrap_plots(p_lagos,p_aysen)
+
+plots_region
+```
+
+Las concesiones de la X región se encuentran con mayor cercanía a lugares pobladosm mientras que las concesiones de la XI región se distribuyen a los largo de una grán área geográfica, corespondiente al área de las Guaitecas, Aysén y Cisnes. 
+
+## Descripción temporal
+
+La base de datos original contiene un total de `r nrow(sites)` observaciones de `r length(unique(sites$Codigo))` centro de cultivo de salmones en un período del 2014 a 2021, correspondientes a 88 Asociaciones de Concesiones (en adelante, ACS o barrios). Para el análisis, se consideraron solo los centros de cultivos de Salmón del atlántico (_Salmo salar_) y Trucha Arcoíris (_Oncorhynchus mykiss_) pertenecientes a la X y XI Región de Chile. Esto debido a que las condiciones climáticas de baja temperatura en la XII Región de Magallanes disminuyen el crecimiento de _Caligus rogercresseyi_. La exclusión de las especies como el Salmón Coho es principalmente debido a su resistencia frente al piojo del salmón.
+
+### X Región
+
+A continuación se presenta un gráfico resumen de las ACS pertenecientes a la X Región de Los Lagos en los períodos 2014 a 2024. Se destaca que durante el período 2014 - 2015 fue la instauración del sistema SIFA por el Servicio Nacional de Pesca y Acuicultura, en donde se comenzó a solicitar y centralizar la información asociada a Caligus por parte del Servicio.
+
+Podemos observar que las ACS 2, 10A y B, 16, 17A y B presentan una alta carga de caligus con respecto a las otras ACS, además de estacionalidad a nivel temporal.
+
+```{r}
+#| fig-cap: "Carga promedio por ACS en la X Región"
+#| fig-height: 3.5
+#| fig-width: 6
+#| label: fig-time-lagos
+
+region_x_load <- 
+sites |> group_by(fechaDeclaracion, nombreRegion, ACS) |> 
+  filter(nombreRegion == "X REGION" & ACS != "ACS Fuerza mayor" &
+           !grepl("(.*\\b[1 6 7]{1}$|^.*\\b[3 4]{1} A|mod|.*(47|12) B)|.*\\b(15|9 C|12 A)", ACS, perl = T) &
+           (Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS")) |>
+  summarize(suma = sum(promHo)) |> 
+  arrange(fechaDeclaracion) |> 
+  ggplot(aes(x = fechaDeclaracion, y = suma, colour = ACS))+
+  geom_path()+
+  facet_wrap(~ACS, scales="free_x")+
+  theme_bw()+
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 6))+
+  labs(x = "Fecha de declaración",
+       y = "Suma de la carga de Hembras Ovígeras total por ACS")
+region_x_load
+```
+
+\newpage
+
+### XI Región
+
+En el siguiente gráfico obseramos la carga total de parásitos de cada ACS en la XI Región de Aysén. Se excluyeron las concesiones con carga muy cercana a 0 durante todo el período, además de las que fueron otorgadas por un período específico de tiempo.
+
+Se observan patrones estacionales marcados en cada uno de los barrios. Esto correspondería a las estaciones del año, junto con los descansos sanitarios que se realizan al cierre de las ACS.
+
+Se observa además que el período al inicio o durante la pandemia fueron los períodos con alta carga de Caligus, en especial en las ACS 18C, 21B, 32, 33 y 34. Se incluyen solo los centros con mayor carga de caligus , y que no presentan períodos largos sin presencia del parásito.
+
+```{r}
+#| fig-cap: "Carga promedio por ACS en la XI Región"
+#| fig-height: 4
+#| fig-width: 6
+#| label: fig-time-aysen
+
+region_xi_load <- 
+  sites |> 
+  group_by(fechaDeclaracion, nombreRegion, ACS) |> 
+  filter(nombreRegion == "XI REGION" &
+           !grepl("(.*\\b2[3-9]{1}|.*\\b3[15]|mod|.*\\b(18)[A B E]|(22 C|19 B))", ACS) &
+           (Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS")) |>
+           summarize(suma = sum(promHo)) |> 
+  arrange(fechaDeclaracion) |> 
+  ggplot(aes(x = fechaDeclaracion, y = suma, colour = ACS))+
+  geom_path()+
+  facet_wrap(~ACS, scales = "free_x")+
+  theme_bw()+
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 7))+
+  labs(x = "Fecha de declaración",
+       y = "Suma de la carga de Hembras Ovígeras total por ACS")
+region_xi_load
+```
+
+\newpage
+## Descripción geográfica
+
+### X Región
+
+```{r}
+shape2 <- shape2[-c(8,5),]
+sites <- sites |> left_join(shape2[,c(3, 10, 22)], by = c("Codigo"= "N_CODIGOCE"))
+
+summary_sites <- 
+  sites |> 
+  mutate(critical = if_else(promHo >= 3, 1, 0)) |>
+  group_by(nombreRegion, ACS,Especie, Codigo) |> 
+  summarize(cg_total = mean(critical, na.rm = T)) |> 
+  left_join(shape2[,c(3, 10, 22)], by = c("Codigo"= "N_CODIGOCE")) |> 
+  filter(!is.na(coordinates[,1]))
+
+summary_lagos <- summary_sites |> 
+  filter(nombreRegion == "X REGION" & ACS != "ACS Fuerza mayor" &
+           !grepl("(.*\\b[1 6 7]{1}$|^.*\\b[3 4]{1} A|mod|.*(47|12) B)|.*\\b(15|9 C|12 A)", ACS, perl = T) &
+           (Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS"))
+summary_aysen <- summary_sites |> filter(nombreRegion == "XI REGION" &
+           !grepl("(.*\\b2[3-9]{1}|.*\\b3[15]|mod|.*\\b(18)[A B E]|(22 C|19 B))", ACS) &
+           (Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS")) 
+
+p_aysen_load <- 
+  ggplot(aysen_base)+
+  geom_sf()+
+  geom_point(data = summary_aysen, aes(x = coordinates[,1],
+                 y = coordinates[,2],
+                 colour = cg_total
+                 ),
+             alpha = 0.5)+
+  coord_sf(xlim = c(-75.6, -71), ylim = c(-46.5, -43.6))+
+  labs(x = "longitud",
+       y = "latitud")+
+  scale_colour_gradientn(colours = c("darkgreen","yellow", "darkred"))+
+  theme_bw()+
+  labs(subtitle = "Aysén",
+       colour = "% Ocurrencias \n Hembras >= 3")+
+  theme(axis.text.x = element_text(size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position = "right",
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 9))
+
+p_lagos_load <- 
+  ggplot(lagos_base)+
+  geom_sf()+
+  geom_point(data = summary_lagos, aes(x = coordinates[,1],
+                 y = coordinates[,2],
+                 colour = cg_total
+                 ),
+             alpha = 0.5)+
+  coord_sf(ylim = c(-44, -41.3 ), xlim = c(-74.8, -71.5))+
+  labs(x = "longitud",
+       y = "latitud")+
+  scale_colour_gradientn(colours = c("darkgreen","yellow", "darkred"))+
+  theme_bw()+
+  labs(subtitle = "Los Lagos")+
+  theme(axis.text.x = element_text(size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position = "",
+        legend.text = element_text(size = 6),
+        legend.title = element_blank())
+```
+
+```{r fig-load-sites}
+#| fig-cap: "Carga total por centro de cultivo en todo el período monitoreado"
+#| fig-height: 12
+#| fig-width: 9
+#| label: fig-load-sites
+
+
+p_load <- wrap_plots(p_lagos_load,p_aysen_load)
+p_load
+
+hist_lagos <- 
+  sites |> filter(nombreRegion == "X REGION" & 
+                    !(ACS %in% c("ACS 13", "ACS 4 A", 
+                                 "ACS Fuerza mayor",
+                                 "ACS 13")) ) |> 
+  mutate(ratio = if_else(promAm+promHo == 0, NA, promHo / (promAm+promHo))) |> 
+ggplot(aes(x = ratio))+
+  geom_histogram()+
+  facet_wrap(~ACS, scales = "free_y")+
+  theme_bw()
+
+
+hist_aysen <- 
+  sites |> filter(nombreRegion == "XI REGION") |> 
+  mutate(ratio = if_else(promAm+promHo == 0, NA, promHo / (promAm+promHo))) |> 
+ggplot(aes(x = ratio))+
+  geom_histogram()+
+  facet_wrap(~ACS, scales = "free_y")+
+  theme_bw()
+
+hist_acs2 <- 
+  sites |> filter(ACS == "ACS 2") |> 
+  filter(
+    !(Codigo %in% c("100123", "101294", "101974",
+                    "104168", "103846", "103966",
+                    "104066", "101505","101607",
+                    "100271", "103634")) ) |> 
+  mutate(ratio = if_else(promAm+promHo == 0, NA, promHo / (promAm+promHo))) |> 
+ggplot(aes(x = ratio))+
+  geom_histogram()+
+  facet_wrap(~Codigo, scales = "free_y")+
+  theme_bw()
+
+```
+
+\newpage
+
+Histogramas
+
+```{r}
+hist_lagos
+```
+
+\newpage
+
+```{r}
+hist_aysen
+```
+
+\newpage
+
+```{r}
+hist_acs2
+```
+
