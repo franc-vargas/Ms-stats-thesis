@@ -40,6 +40,10 @@ chile <- chilemapas::generar_regiones()
 lagos_base <- chile |> filter(codigo_region == 10)
 aysen_base <- chile |> filter(codigo_region == 11)
 
+
+```
+
+```{r}
 p_lagos <- 
   ggplot(lagos_base)+
   geom_sf()+
@@ -80,6 +84,7 @@ p_aysen <-
         legend.title = element_blank())
 
 ```
+
 
 # Descripcioń general
 
@@ -299,5 +304,45 @@ hist_aysen
 
 ```{r}
 hist_acs2
+```
+
+```{r}
+sites |> filter(nombreRegion == "X REGION" & 
+                    !(ACS %in% c("ACS 13", "ACS 4 A", 
+                                 "ACS Fuerza mayor",
+                                 "ACS 13")) ) |> 
+    mutate(ratio = if_else(promAm+promHo+promJuv == 0, NA, (promHo+promAm) / (promAm+promHo+ promJuv ))) |> 
+ggplot(aes(x = (ratio)))+
+    geom_density()+
+  facet_wrap(~ACS, scales = "free")+
+  theme_bw()
+
+sites |> filter(ACS == "ACS 2") |> 
+  filter(
+    !(Codigo %in% c("100123", "101294", "101974",
+                    "104168", "103846", "103966",
+                    "104066", "101505","101607",
+                    "100271", "103634")) ) |> 
+  pivot_longer(cols = c(promHo, promAm, promJuv, promParasitoTotal), names_to = "tipo_parasito",
+               values_to = "conteo") |> 
+ggplot(aes(x = conteo, fill = tipo_parasito))+
+  geom_density(alpha = 0.5)+
+  facet_wrap(~Codigo, scales = "free")+
+  theme_bw()
+
+
+sites |> filter(ACS == "ACS 2") |> 
+  filter(
+    !(Codigo %in% c("100123", "101294", "101974",
+                    "104168", "103846", "103966",
+                    "104066", "101505","101607",
+                    "100271", "103634")) ) |> 
+  mutate(ratio = if_else(promAm+promHo+promJuv == 0, NA, (promHo+promAm) / (promAm+promHo+ promJuv ))) |> 
+ggplot(aes(x = ratio))+
+  geom_density(alpha = 0.5)+
+  facet_wrap(~Codigo, scales = "free")+
+  theme_bw()
+
+
 ```
 
