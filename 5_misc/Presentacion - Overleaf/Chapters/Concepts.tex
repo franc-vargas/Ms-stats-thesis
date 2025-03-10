@@ -1,0 +1,68 @@
+
+\subsubsection{Proceso Estacionario}
+\begin{frame}{Proceso Estacionario}
+
+Un campo aleatorio, denotado por ${\{Y(\mathbf{s}) : \mathbf{s} \in D \subset \mathbb{R}^d\}}$ o ${\{Y(\mathbf{s})\}}$, es una colecci\'on de variables aleatorias indexadas por $D$, donde cada $\mathbf{s} \in D$ es una localizaci\'on geogr\'afica \cite{Cressie1993}.
+
+\vspace{\baselineskip}
+\begin{enumerate}
+        \item Estrictamente estacionario: $Y(\mathbf{s})$, $\mu(\mathbf{s}) = \mathbb{E}(Y(\mathbf{s}))$  es una funci\'on constante de $\mathbf{s}$ \cite{Banerjee2015}.
+        \item D\'ebilmente estacionario: $\mu(\mathbf{s}), \sigma^{2}(\mathbf{s})$ son constantes \cite{Schaenberger2005}.
+        \item Intr\'insecamente estacionario: Es $Var(Y(\mathbf{s+h}) - Y(\mathbf{s}))$, libre de localizaci\'on y depende solo del vector $\mathbf{h}$ \cite{Sujit2022}.
+\end{enumerate}
+
+\end{frame}
+\subsubsection{Variograma e Isotrop\'ia}
+\begin{frame}{Variograma}
+Aplica bajo el concepto de media y varianza constante, para un  proceso intrinsecamente estacionario podemos asumir: \vspace{\baselineskip}
+\begin{itemize}
+    \item $\mathbb{E}[Y\mathbf{(s + h)} - Y\mathbf{(s)}] = 0$
+    \item $\mathbb{E}[Y\mathbf{(s + h)} - Y(\mathbf{s})]^2 = Var(Y\mathbf{(s+h)} - Y\mathbf{(s)}) = 2\gamma(\mathbf{h})$
+\end{itemize}
+\vspace{\baselineskip}
+\subsubsection{Variograma}
+
+donde el lado izquierdo depende solo de $\mathbf{h}$ y no de $\mathbf{s}$, y la funci\'on $2\gamma(\mathbf{h})$ es el variograma.\vspace{\baselineskip}
+
+Y donde el gr\'afico de la covarianza frente a h $\mathbf{C(h)}$ es comunmente llamada covariograma.
+
+\end{frame}
+\subsubsection{Isotrop\'ia y Kriging}
+\begin{frame}{Isotrop\'ia}
+\textbf{Isotrop\'ia}\\
+Si es que la funci\'on del semivariograma depende de la funci\'on $\gamma(\mathbf{h})$, el variograma es isotr\'opico, sino se define como anisotr\'opico\vspace{\baselineskip}
+
+\textbf{Kriging}\\
+Permite estimar el valor de una variable sobre un campo aleatorio espacial continuo, basado en la autocorrelaci\'on y ponderaciones.
+\begin{equation}
+   \mathbf{\hat{Z}(x_0)} = \sum_{i=1}^{n}\lambda_i
+\end{equation}
+donde $\sum_{i=1}^n\lambda_i = 1$ \cite{FischerHandbook2010}.
+\end{frame}
+\subsubsection{Modelos}
+\begin{frame}{Modelos Param\'etricos}
+Tienen como base los modelos lineales cl\'asicos, adaptados al punto de vista espacial, donde la correlaci\'on se representa a trav\'es  de $\mathbf{h}$ \cite{Dormann2007}. 
+\begin{itemize}
+    \item Autocovariados $\mathbf{Y} = \mathbf{X} \boldsymbol{ \beta } + \boldsymbol{\varepsilon} \rightarrow \mathbf{Y}=\mathbf{X}\boldsymbol{ \beta }+\rho A+\boldsymbol{\varepsilon}$
+    \item M\'inimos Cuadrados $\mathbf{Y} = \mathbf{X} \boldsymbol{ \beta } + \boldsymbol{\varepsilon}$ con $ \boldsymbol{\varepsilon} \sim N (0,\boldsymbol{\Sigma})$
+    \begin{itemize}
+    \item Exponencial.
+    \item Gaussiana.
+    \item Esf\'erica.
+    \end{itemize}
+    \item Aproximaciones a los GLM.
+    \begin{itemize}
+        \item Ej. Autolog\'istico \cite{Dormann2007}
+    \end{itemize}
+    
+\end{itemize}
+
+\end{frame}
+
+\subsubsection{Evaluaci\'on de los modelos}
+\begin{frame}{Evaluaci\'on modelos}
+Se considerar\'a una metodolog\'ia basada \cite{Tucci2019}, quienes proponen un m\'etodo nuevo para estimar la matriz de covarianza real $\Sigma$ desde la matriz de covarianza no-negativa definitiva $m \times m$ de la muestra, definida como $K = \frac{1}{n}MM^*$ bajo la condici\'on de $n<m$.\vspace{\baselineskip}
+
+Este nuevo modelo param\'etrico ser\'a contrastado con un modelo param\'etrico cl\'asico y el desempeño de ambos ser\'a evaluado a trav\'es de su comportamiento frente a datos no-experimentales (de campo) y tambi\'en con m\'etodo de Monte Carlo.
+
+\end{frame}

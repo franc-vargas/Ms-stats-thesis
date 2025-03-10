@@ -1,0 +1,1100 @@
+---
+title: "Kriging Ordinario: Comparación utilizando distancias euclidianas y no euclidianas aplicadas a la salmonicultura"
+author: "Francisco Vega"
+citeproc: true
+format: 
+  beamer:
+    slide-level: 2
+    toc: true
+    echo: false
+    lang: es
+    include-in-header:
+    - text: |
+              \usepackage{amsmath, amsfonts, amssymb}
+              \usepackage{dsfont}
+engine: knitr
+bibliography: Tesis_FVega.bib
+bibliographystyle: american-physics-society
+editor_options: 
+  chunk_output_type: console
+header-includes: 
+  - \titlegraphic{\includegraphics[width=2cm]{Images/LogoUC.pdf}}
+
+---
+```{r}
+#| label: librerias
+library(tidyverse)
+library(sf)
+library(sp)
+library(patchwork)
+ggplot2::theme_set(theme_bw())
+
+```
+
+```{r}
+#| label: custom-functions
+this <- here::here()
+source(paste(this,"2_scripts/1_ImprovedSemivariogram.R", sep = "/"))
+source(paste(this, "2_scripts/Custom Functions/Custom Kriging.R", sep = "/"))
+custom_themes <- 
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        legend.title = element_text(size = 8),
+        axis.text = element_text(size = 7),
+        #axis.text.y = element_text(0.5),
+        legend.key.size = unit(0.5, 'cm'),
+        axis.title = element_text(size = 8))
+```
+
+
+```{r}
+#| label: datos
+
+mapa_base <- chilemapas::generar_regiones() |> dplyr::filter(codigo_region == 11)
+
+# predicted_points <- readr::read_rds(here::here("1_data/Kriging_points.rds"))
+predicted_points <- readr::read_rds(here::here("1_data/Kriging_points_Extra.rds"))
+
+max.summary <- readr::read_rds(here::here("1_data/max_summary_AysenLagos.rds"))
+aysen.summary <- max.summary |> filter(nombre_region == "XI REGION")
+aysen.summary$re_scaled_total_adults <- aysen.summary$max.adultos_totales / 40
+aysen_coords <- 
+  aysen.summary |>
+  dplyr::select(lon, lat, codigo)
+
+# aysen.sf <- aysen.summary
+# coordinates(aysen.sf) <- ~lon+lat
+
+sites_full <- 
+  readr::read_rds(here::here("1_data/joined_data.rds")) |> 
+  janitor::clean_names() |> 
+  filter(nombre_region == "XI REGION", 
+         especie %in% c("SALMON DEL ATLANTICO", "TRUCHA ARCOIRIS"))
+sites_full <- 
+  sites_full |> 
+  dplyr::mutate(
+    adultos_totales = prom_ho + prom_am,
+    prop.juv = prom_juv/(prom_juv + adultos_totales)) |> 
+  dplyr::select(codigo, especie, fecha_primer_muestreo, fecha_declaracion,
+         biomasa_centro, peso_promedio, numero_total_peces,
+         prom_juv, prom_ho, prom_am, adultos_totales,  
+         prop.juv, temperatura_promedio, 
+         salinidad_promedio) |> 
+  mutate(
+    ddiff =  if_else(
+      is.na(lag(fecha_declaracion)), 
+      interval(fecha_declaracion-days(7), ymd(fecha_declaracion)),
+      interval(ymd(lag(fecha_declaracion)), ymd(fecha_declaracion))
+    ),
+    ddiff = ddiff/weeks(1),
+    .by = c(codigo, especie)) |> 
+  mutate(new_cycle = if_else(ddiff > 7 | 
+                               fecha_declaracion == ymd(min(fecha_declaracion)),
+                             1, 0),
+         .by = c(codigo, especie)) |> 
+  mutate(cycle = cumsum(new_cycle), .by = c(codigo, especie))
+
+```
+
+```{r}
+#| label: non-euclidian-distance-matrix
+
+aysen.distance <- readr::read_rds(here::here("1_data/Aysen_DistanceMatrix.rds"))
+aysen.distance <- aysen.distance/1000
+ids <- unique(aysen.summary$codigo)
+aysen.dist.subset <- aysen.distance[rownames(aysen.distance)%in% ids, 
+                                    colnames(aysen.distance) %in% ids]
+aysen.dist.subset <- aysen.dist.subset[order(match(rownames(aysen.dist.subset),
+                                                   ids)), 
+                                       order(match(colnames(aysen.dist.subset), ids))]
+# S0 <- readr::read_rds(here::here("kriging_distances.rds"))
+S0 <- readr::read_rds(here::here("1_data/kriging_distance_S0_Fixed.rds"))
+
+S0_Non_Euc <- S0[order(match(rownames(S0),
+                             ids)),]/1000
+
+
+
+```
+
+```{r}
+#| label: euclidian-distance-matrix
+
+origin <- st_as_sf(aysen_coords[,c(1:2)], coords = c("lon", "lat"),
+                   crs = st_crs("WGS84"))
+dest <- st_as_sf(aysen_coords[,c(1:2)], coords = c("lon", "lat"),
+                 crs = st_crs("WGS84"))
+distances <- st_distance(origin, dest, by_element = F )
+
+
+distances <- units::set_units(distances, "km")
+distances <- as.dist(distances) |> as.matrix()
+rownames(distances) <- aysen_coords$codigo
+colnames(distances) <- aysen_coords$codigo
+
+predicted_points_euc <- coordinates(predicted_points)
+colnames(predicted_points_euc) <- c("lon", "lat")
+predicted_points_euc <- data.frame(predicted_points_euc)
+
+dest_s0 <- st_as_sf(predicted_points_euc, coords = c("lon", "lat"),
+                    crs = st_crs("WGS84"))
+distances_krig_euc <- st_distance(origin, dest_s0, by_element = F )
+distances_krig_euc <-units::set_units(distances_krig_euc, "km")
+distances_krig_euc <- matrix(distances_krig_euc, ncol = dim(distances_krig_euc)[2])
+rownames(distances_krig_euc) <- aysen_coords$codigo
+```
+
+```{r}
+vg_custom_scaled <- cs.variog("re_scaled_total_adults", "codigo", aysen.distance, 
+                       aysen.summary, breaks = 15, 
+                       max.dist = round(max(aysen.distance)/4,0), plot = F)
+
+vg_custom_euc_scaled <- cs.variog("re_scaled_total_adults", "codigo", distances, 
+                           aysen.summary, breaks = 15, 
+                           max.dist = round(max(distances)/4,0), plot = F)
+
+a <- as.vector(aysen.dist.subset)
+b <- as.vector(distances)
+
+dist_comparison <- 
+  ggplot()+
+  geom_jitter(aes(x = a, y = b), alpha = 0.1)+
+  labs(x = "Least-Cost", y ="Euclidian")
+
+```
+
+
+
+# Principales desafíos
+
+## Caligidosis
+
+![Ciclo de Caligus @carvajal_native_1998 ](Images/ciclo-caligus.jpg){height=60% width=80%}
+
+## Costos y pérdidas
+
+* Directos
+
+  - Tratamientos en alimento
+  
+  - Tratamientos en jaula
+    
+  - Pérdida de calidad
+    
+* Indirectos
+
+  - Aumento en FCR [@lepe-lopez_epidemiological_2021]
+  
+  - Susceptibilidad a otros patógenos
+
+---
+
+![Daño en el pez](Images/caligus-fish.jpg){height=80% width=80%}
+
+---
+
+## Problema distancia euclidiana
+
+```{r}
+#| fig-width: 4
+#| fig-height: 3
+#| fig-align: center
+
+lineas_coords <- readr::read_rds(here::here("2_scripts/0_Presentación/lineas_noneuc.rds"))
+matrix_coords <- as.matrix(aysen_coords[,c(1:2)])
+
+generic_sites <- 
+  ggplot(mapa_base) + 
+  geom_sf() + 
+   geom_point(
+             fill = "black",
+             data = aysen.summary[-c(16,19),],
+             alpha = 0.7,size = 0.5,
+             aes(x =  lon,
+                 y = lat)) +
+   geom_point(
+             colour = "darkred",size = 1,
+             data = aysen.summary[c(16,19),],
+             aes(x =  lon,
+                 y = lat)) + 
+  labs(x = "longitud", y = "latitud") + 
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  theme_bw()+custom_themes
+
+example_distance <- 
+  ggplot(mapa_base) + 
+  geom_sf() +
+  geom_point(
+    fill = "black",
+    data = aysen.summary[c(16,19),],
+    alpha = 0.7,
+    aes(x =  lon,
+        y = lat)) + 
+  geom_path(data =data.frame(lineas_coords),
+            aes(x=x, y=y,
+                colour = "Non-Euclidian"),
+            alpha = 0.7) + 
+  geom_segment(data = data.frame(matrix_coords), 
+            aes(x = matrix_coords[16,1], 
+                y = matrix_coords[16,2],
+                xend = matrix_coords[19,1],
+                yend = matrix_coords[19,2],
+                colour = "Euclidian"),
+            alpha = 0.7) + 
+  theme_bw() + 
+  labs(colour = "", x = "longitud", y = "latitud") +
+  scale_colour_manual(values = c("Non-Euclidian" = "darkred", 
+                                 "Euclidian" = "darkgreen")) + 
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-45.73, -44.4)) + 
+  theme(legend.position = "top")
+
+generic_sites
+
+```
+
+# Datos
+
+## Resumen
+
++ Fuente: SERNAPESCA
+
++ Período: 2015 - 2022.
+
++ Ubicación: Región de Aysén.
+
++ Especies consideradas: _Salmo salar_ y _Oncorhynchus mykiss_.
+
+
+---
+
+Para resumir a un problema solo espacial, se resumieron las observaciones a través de el promedio de los máximos por cada ciclo.
+
+```{r}
+histfull <- 
+  ggplot(sites_full) + 
+  geom_histogram(aes(x = adultos_totales), 
+                 bins = 200,
+                 fill = "darkgreen",
+                 alpha = 0.7) + 
+  labs(y = "Frecuencia", x = "Adultos Totales")
+histzoom <- 
+  ggplot(sites_full) + 
+  geom_histogram(aes(x = adultos_totales), 
+                 bins = 200,
+                 fill = "darkgreen", 
+                 alpha = 0.7) + 
+  labs(x = "Adultos Totales", y = "Frecuencia") +
+  xlim(c(0,100))
+
+histmax <- 
+  ggplot(aysen.summary) + 
+  geom_histogram(aes(x = max.adultos_totales/40), 
+                 bins = 70,
+                 fill = "darkgreen", 
+                 alpha = 0.7) + 
+  labs(x = "Promedio de máximos de Adultos Totales", y = "Frecuencia") 
+
+histfull / histmax
+
+```
+
+---
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+colores <- c("darkblue", "yellow" , "red")
+
+carga_centros_general <-
+  ggplot(mapa_base) + 
+  geom_sf() + 
+   geom_point(
+             fill = "black",
+             data = aysen.summary,
+             alpha = 0.7,size = 1.5,
+             aes(x =  lon,
+                 y = lat, colour = re_scaled_total_adults)) + 
+  labs(x = "longitud", y = "latitud", colour = "P. Adultos totales") + 
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  custom_themes
+carga_centros_general
+```
+
+
+## Cálculo de distancia
+
+* Paquete gdistance [@gdistance].
+
+  + "Camino más corto" o Least-Cost.
+  
+  + Rasters.
+  
+  + Matrices de transición.
+
+```{r}
+dist_comparison + example_distance
+```
+
+## Modelos en la literatura 
+
++ Modelo espacio-temporal estocástico: $\mu_{it} =  S_{it}\cdot \kappa_{it}^{susc}\cdot(\lambda_{it}^w+ \lambda_{it}^d + \lambda_{it}^o)$ [@aldrin_space-time_2013]
+
++ Modelos autoregresivos de estado-espacio [@elghafghuf_estimating_2020]
+
++ Modelos de dos partes con efectos aleatorios [@rees_spatial_2015]
+
+Kriging Ordinario: 
+
+$\mathbf{Z^*_{\lambda}(x_0)} := \boldsymbol{\lambda}^{\top}\mathbf{Z}$, donde:      $\boldsymbol{\lambda} = \Sigma^{-1}\left[\mathbf{c_0} + \mathbf{1}(\mathbf{1}^\top\Sigma^{-1}\mathbf{1})^{-1}(1 - \mathbf{1}^\top\Sigma^{-1}\mathbf{c_0}) \right] \ , \ \boldsymbol\lambda^{\top}\mathbf{1} = 1$
+  
+$\sigma_{ok}^2 = \sigma^{2}_0-\mathbf{c_0^\top}\Sigma^{-1}\mathbf{c_0} + (1 - \mathbf{1}^\top\Sigma^{-1}\mathbf{c_0})^{\top}(\mathbf{1}^\top\Sigma^{-1}\mathbf{1})^{-1}(1 - \mathbf{1}^\top\Sigma^{-1}\mathbf{c_0})$
+
+## Semivariograma
+
+```{r}
+external_theme <- theme(plot.title = element_text(hjust = 0.5))
+
+nugget_ne <- vg_custom_scaled$plot.data$semivariog[1]
+sigma2_ne <- 500 - nugget_ne
+phi_ne <- 15
+nugget_eu <- vg_custom_euc_scaled$plot.data$semivariog[1]
+sigma2_eu <- vg_custom_euc_scaled$plot.data$semivariog[4] - nugget_eu
+phi_eu <- 8
+
+semivariograma_ne <- 
+  ggplot(vg_custom_scaled$plot.data) +
+  geom_point(aes(x = lag-min(lag), y = semivariog)) +
+  labs(x = "Distancia (km)", y = "Semivarianza",
+       caption = expression(paste("Modelo Matérn Least-Cost",": ",sigma^2 ,"=",394, ", ", Phi,"=",20, ", ",
+                                  nugget, "=", 106 , ", ",kappa==0.5) )) + 
+   geom_function(fun = variogram, 
+                args = list(nugget=nugget_ne, sigma2=sigma2_ne, phi=phi_ne, covmodel = "matern"),
+                colour = "darkred",
+                xlim = c(0,90)) + 
+  
+  external_theme
+
+semivariograma_eu <- 
+  ggplot(vg_custom_euc_scaled$plot.data) +
+  geom_point(aes(x = lag-min(lag), y = semivariog)) + 
+   geom_function(fun = variogram, 
+                args = list(nugget= nugget_eu, sigma2=sigma2_eu, phi=phi_eu, covmodel = "matern"),
+                colour = "darkred",
+                xlim = c(0,90)) + 
+  labs(x = "Distancia (km)", y = "Semivarianza",  
+       caption = expression(paste("Modelo Matérn Euclidiano",": ",sigma^2 ,"=",278, ", ", Phi,"=",8, ", ",
+                                  nugget, "=", 167 , ", ",kappa==0.5) )) + 
+  external_theme
+semivariograma_ne / semivariograma_eu
+
+
+vg_short_lc <- cs.variog("re_scaled_total_adults", "codigo", aysen.distance, 
+                       aysen.summary, breaks = 15, 
+                       max.dist = round(max(aysen.distance)/9,0), plot = F)
+
+vg_short_euc <- cs.variog("re_scaled_total_adults", "codigo", distances, 
+                           aysen.summary, breaks = 15, 
+                           max.dist = round(max(distances)/9,0), plot = F)
+
+
+```
+
+```{r}
+nugget_ne_short <- vg_short_lc$plot.data$robust[1]
+sigma2_ne_short <- vg_short_lc$plot.data$robust[9] - nugget_ne_short
+phi_ne_short <- 5
+nugget_eu_short <- vg_short_euc$plot.data$robust[1]
+sigma2_eu_short <- vg_short_euc$plot.data$robust[9] - nugget_eu_short
+phi_eu_short <- 5
+
+semivariograma_ne_short <- 
+  ggplot(vg_short_lc$plot.data) +
+  geom_point(aes(x = lag-min(lag), y = robust)) +
+  labs(x = "Distancia (km)", y = "Semivarianza",
+       caption = expression(paste("Modelo Matérn Least-Cost",": ",sigma^2 ,"=",92, ", ", Phi,"=",5, ", ",
+                                  nugget, "=", 30 , ", ",kappa==0.5) )) + 
+   geom_function(fun = variogram, 
+                args = list(nugget=nugget_ne_short, sigma2=sigma2_ne_short, phi=phi_ne_short, covmodel = "matern"),
+                colour = "darkred",
+                xlim = c(0,round(max(aysen.dist.subset)/9,0))) + 
+  
+  external_theme
+
+semivariograma_eu_short <- 
+  ggplot(vg_short_euc$plot.data) +
+  geom_point(aes(x = lag-min(lag), y = robust)) + 
+   geom_function(fun = variogram, 
+                args = list(nugget= nugget_eu_short, 
+                            sigma2=sigma2_eu_short,
+                            phi=phi_eu_short, covmodel = "matern"),
+                colour = "darkred",
+                xlim = c(0,round(max(distances)/9,0))) + 
+  labs(x = "Distancia (km)", y = "Semivarianza",  
+       caption = expression(paste("Modelo Matérn Euclidiano",": ",
+                                  sigma^2 ,"=", 101, ", ",
+                                  Phi,"=",5, ", ",
+                                  nugget, "=", 43 , ", ",kappa==0.5) )) + 
+  external_theme
+
+```
+
+
+# Kriging ordinario
+
+```{r}
+#| label: covariance-matrix
+
+mu <- mean(aysen.summary$max.adultos_totales/40)
+param.OK_ne <- data.frame(mu = mu, sigma2 = sigma2_ne, phi = phi_ne, nugget = nugget_ne)
+param.OK_eu <- data.frame(mu = mu, sigma2 = sigma2_eu, phi = phi_eu, nugget = nugget_eu)
+param.OK_ne_short <- data.frame(mu = mu, sigma2 = sigma2_ne_short, phi = phi_ne_short, nugget = nugget_ne_short)
+param.OK_eu_short <- data.frame(mu = mu, sigma2 = sigma2_eu_short, phi = phi_eu_short, nugget = nugget_eu_short)
+
+
+
+# Distance Covariance
+Sigma_Non_Euc <- 
+  geoR::cov.spatial(aysen.dist.subset, 
+                    cov.model="matern", 
+                    cov.pars=c(
+                      sigma2_ne, 
+                      phi_ne)) + 
+  nugget_ne*diag(nrow(aysen.summary))
+
+
+
+Sigma_Euc <- 
+  geoR::cov.spatial(distances, 
+                    cov.model="matern", 
+                    cov.pars=c(
+                      sigma2_eu, 
+                      phi_eu)) + nugget_eu*diag(nrow(aysen.summary))
+
+Sigma_Non_Euc_short <- 
+  geoR::cov.spatial(aysen.dist.subset, 
+                    cov.model="matern", 
+                    cov.pars=c(
+                      sigma2_ne_short, 
+                      phi_ne_short)) + 
+  nugget_ne_short*diag(nrow(aysen.summary))
+
+
+
+Sigma_Euc_short <- 
+  geoR::cov.spatial(distances, 
+                    cov.model="matern", 
+                    cov.pars=c(
+                      sigma2_eu_short, 
+                      phi_eu_short)) + nugget_eu_short*diag(nrow(aysen.summary))
+
+
+
+```
+
+```{r}
+#| label: kriging-ordinario
+
+OK_Non_Euc <- krig.manual(data=aysen.summary$re_scaled_total_adults,
+                          Sigma=Sigma_Non_Euc, 
+                          param = param.OK_ne,
+                          cov.model="matern", 
+                          h0=S0_Non_Euc,
+                          type = "ord")
+
+OK_Euclid <- krig.manual(data=aysen.summary$re_scaled_total_adults,
+                         Sigma=Sigma_Euc, 
+                         param = param.OK_eu,
+                         cov.model="matern", 
+                         h0=distances_krig_euc,
+                         type = "ord")
+
+OK_Non_Euc_short <- krig.manual(data=aysen.summary$re_scaled_total_adults,
+                          Sigma=Sigma_Non_Euc_short, 
+                          param = param.OK_ne_short,
+                          cov.model="matern", 
+                          h0=S0_Non_Euc,
+                          type = "ord")
+OK_Euclid_short <- krig.manual(data=aysen.summary$re_scaled_total_adults,
+                         Sigma=Sigma_Euc_short, 
+                         param = param.OK_eu_short,
+                         cov.model="matern", 
+                         h0=distances_krig_euc,
+                         type = "ord")
+
+
+predicted_points@data$predictions_OK <- OK_Non_Euc$pred
+predicted_points@data$var_pred_OK <- OK_Non_Euc$var.pred
+predicted_points@data$predictions_OK_Euc <- OK_Euclid$pred
+predicted_points@data$var_pred_OK_Euc <- OK_Euclid$var.pred
+
+predicted_points@data$predictions_OK_short <- OK_Non_Euc_short$pred
+predicted_points@data$var_pred_OK_short <- OK_Non_Euc_short$var.pred
+predicted_points@data$predictions_OK_Euc_short <- OK_Euclid_short$pred
+predicted_points@data$var_pred_OK_Euc_short <- OK_Euclid_short$var.pred
+
+colores <- c("darkblue", "yellow" , "red")
+
+max_var <- max(c(OK_Non_Euc$var.pred, OK_Euclid$var.pred))
+min_var <- min(c(OK_Non_Euc$var.pred, OK_Euclid$var.pred))
+max_var_short <- max(c(OK_Non_Euc_short$var.pred, OK_Euclid_short$var.pred))
+min_var_short <- min(c(OK_Non_Euc_short$var.pred, OK_Euclid_short$var.pred))
+
+```
+
+
+```{r}
+Kriging.Mean.Plot <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+            aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                fill = predictions_OK),
+            alpha = 0.65, interpolate = T,
+            show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F )+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                       limits = c(0, max(aysen.summary$re_scaled_total_adults[-nrow(aysen.summary)])))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "left")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Kriging",
+       colour = "Adultos Centro",
+       title = "Least-Cost Distance")+custom_themes
+
+
+Kriging_var_plot_noneuc <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1], y = predicted_points@coords[,2], 
+                  fill = var_pred_OK),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F, alpha = 0.7 )+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores, limits = c(min_var , max_var)
+                       )+
+  scale_colour_gradientn(colors = colores,
+                       limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "left")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Varianza",
+       colour = "Adultos Centro",
+       title = "Least-Cost Distance")+custom_themes
+
+
+```
+
+```{r}
+Kriging.Mean.Plot_euc <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                  fill = predictions_OK_Euc),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F )+
+  geom_point(shape = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7, size = 1,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                       limits = c(0, max(aysen.summary$re_scaled_total_adults[-nrow(aysen.summary)])))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Adultos Krig",
+       colour = "Adultos Centro",
+       title = "Euclidian Distance")+custom_themes
+
+Kriging_var_plot_euc <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                  fill = var_pred_OK_Euc),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, 
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F, alpha = 0.7, size = 1)+
+  geom_point(shape = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,  size =1,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores, limits = c(min_var , max_var)
+  )+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Krig. Varianza",
+       colour = "Adultos Centro",
+       title = "Euclidian Distance")+
+  custom_themes
+```
+
+```{r}
+Kriging.Mean.Plot_short <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+            aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                fill = predictions_OK_short),
+            alpha = 0.65, interpolate = T,
+            show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F )+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                       limits = c(0, max(aysen.summary$re_scaled_total_adults[
+                           -nrow(aysen.summary)
+                         ])))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "left")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Kriging",
+       colour = "Adultos Centro",
+       title = "Least-Cost Distance")+custom_themes
+
+
+Kriging_var_plot_noneuc_short <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1], y = predicted_points@coords[,2], 
+                  fill = var_pred_OK_short),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F, alpha = 0.7 )+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores, limits = c(min_var_short , max_var_short)
+                       )+
+  scale_colour_gradientn(colors = colores,
+                       limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "left")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Varianza",
+       colour = "Adultos Centro",
+       title = "Least-Cost Distance")+custom_themes
+
+
+```
+
+```{r}
+Kriging.Mean.Plot_euc_short <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                  fill = predictions_OK_Euc_short),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F )+
+  geom_point(shape = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7, size = 1,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                       limits = c(0, max(aysen.summary$re_scaled_total_adults[
+                         -nrow(aysen.summary)
+                       ])))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Adultos Krig",
+       colour = "Adultos Centro",
+       title = "Euclidian Distance")+custom_themes
+
+Kriging_var_plot_euc_short <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                  fill = var_pred_OK_Euc_short),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, 
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F, alpha = 0.7, size = 1)+
+  geom_point(shape = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,  size =1,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores, limits = c(min_var_short , max_var_short)
+  )+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  theme(legend.position = "")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Krig. Varianza",
+       colour = "Adultos Centro",
+       title = "Euclidian Distance")+
+  custom_themes
+```
+
+
+
+## Media 
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+
+Kriging.Mean.Plot + Kriging.Mean.Plot_euc
+```
+
+## Varianza 
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+Kriging_var_plot_noneuc + Kriging_var_plot_euc
+
+
+```
+
+
+
+## Comparaciones
+
+```{r}
+var_ratio_min <- min(predicted_points@data$var_pred_OK/predicted_points@data$var_pred_OK_Euc)
+var_ratio_max <- max(predicted_points@data$var_pred_OK/predicted_points@data$var_pred_OK_Euc)
+aux_mean_diff <- predicted_points@data$predictions_OK - predicted_points@data$predictions_OK_Euc
+aux_diff_cat <- ifelse(round(aux_mean_diff,0) <0, 1, 0)
+
+predicted_points@data$cat_diff <- aux_diff_cat
+
+predicted_points@data$krig.diff <- aux_mean_diff
+
+mean_diff <-
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] ,
+                  y = predicted_points@coords[,2], 
+                  fill = abs(krig.diff)),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), 
+           ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores
+  )+
+  scale_colour_gradientn(colors = colores)+
+  theme_bw()+
+  theme(legend.position = "left")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Abs. Diff",
+       title = "Diff LC - Euc")+
+  custom_themes
+
+var_diff <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                  fill = (var_pred_OK/var_pred_OK_Euc)),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745),
+           ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                        limits = c(var_ratio_min,var_ratio_max))+
+  theme_bw()+
+  theme(legend.position = "right")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Ratio",
+       title = "Ratio Varianzas LC / Euc")+
+  custom_themes
+
+
+var_diff_hist <- 
+  ggplot() + 
+  geom_histogram(aes(
+    x = predicted_points@data$var_pred_OK /
+      predicted_points@data$var_pred_OK_Euc), fill = "darkgreen",
+    alpha = 0.7) + 
+  labs(x = "Ratio Varianza Least-Cost / Euclidiana", y = "Frecuencia")
+
+mean_diff_hist <- 
+  ggplot() + 
+  geom_histogram(aes(
+    x = abs(predicted_points@data$predictions_OK - 
+      predicted_points@data$predictions_OK_Euc)),
+    fill = "darkred",
+    alpha = 0.7) + 
+  labs(x = "Diferencia absoluta", 
+       y = "Frecuencia")
+
+```
+
+```{r}
+var_ratio_min_short <- min(predicted_points@data$var_pred_OK_short/predicted_points@data$var_pred_OK_Euc_short)
+var_ratio_max_short <- max(predicted_points@data$var_pred_OK_short/predicted_points@data$var_pred_OK_Euc_short)
+aux_mean_diff_short <- predicted_points@data$predictions_OK_short - predicted_points@data$predictions_OK_Euc_short
+
+predicted_points@data$krig.diff_short <- aux_mean_diff_short
+mean_diff_short <-
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] ,
+                  y = predicted_points@coords[,2], 
+                  fill = abs(krig.diff_short)),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), 
+           ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores
+  )+
+  scale_colour_gradientn(colors = colores)+
+  theme_bw()+
+  theme(legend.position = "left")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Abs. Diff",
+       title = "Diff LC - Euc")+
+  custom_themes
+
+
+var_diff_short <- 
+  ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+              aes(x = predicted_points@coords[,1] , y = predicted_points@coords[,2], 
+                  fill = (var_pred_OK_short/var_pred_OK_Euc_short)),
+              alpha = 0.65, interpolate = T,
+              show.legend =T)+
+  geom_sf()+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745),
+           ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                        limits = c(0.5,var_ratio_max_short))+
+  theme_bw()+
+  theme(legend.position = "right")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "Ratio",
+       title = "Ratio Varianzas LC / Euc")+
+  custom_themes
+
+
+
+```
+
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+mean_diff + var_diff
+
+```
+
+---
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+#| fig-align: center
+
+mean_diff_hist / var_diff_hist
+```
+
+# Efecto Outlier?
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+#| fig-align: center
+
+plot(vg_custom_scaled, robust = T, main = "Least Cost - Semivariograma Robusto de Cressie")
+
+```
+
+---
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+#| fig-align: center
+
+plot(vg_custom_euc_scaled, robust = T,main = "Euclidiana - Semivariograma Robusto de Cressie")
+```
+
+## Ajuste a corta distancia
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+#| fig-align: center
+
+semivariograma_ne_short / semivariograma_eu_short
+```
+
+## Media 
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+Kriging.Mean.Plot_short + Kriging.Mean.Plot_euc_short
+
+```
+
+## Varianza
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+Kriging_var_plot_noneuc_short + Kriging_var_plot_euc_short
+
+```
+
+## Comparaciones
+
+```{r}
+#| fig-width: 6
+#| fig-height: 5
+#| fig-align: center
+
+mean_diff_short + var_diff_short
+```
+
+
+# Futuros trabajos
+
+* Extensión:
+
+  - Cokriging
+  
+  - Extensión a modelos geoestadísticos espacio-temporales
+  
+  - Considerar modelos cero-inflados
+  
+# Referencias {.allowframebreaks}
+
+

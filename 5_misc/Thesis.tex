@@ -1,0 +1,118 @@
+\documentclass[pdftex,spanish]{pucthesis}	% For pdfLaTeX, in spanish
+
+\usepackage{graphicx}
+\usepackage{float}
+%\floatstyle{boxed}
+%\restylefloat{figure}
+\usepackage{subfigure}
+\usepackage{color}
+
+% Math packages
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+
+% Closest font to Times New Roman
+\usepackage{times}
+
+% To make pretty tables
+\usepackage{booktabs}
+\usepackage{multirow}
+
+% To avoid underfull errors in the bibliography
+\usepackage{etoolbox}
+\apptocmd{\sloppy}{\hbadness 10000\relax}{}{}
+
+% To make cites and references
+\usepackage[hidelinks,pdfusetitle,pdfdisplaydoctitle]{hyperref}
+\usepackage[notocbib]{apacite} 
+\usepackage{doi}
+\renewcommand{\doitext}{}
+
+%--------- NEW ENVIRONMENTS --------- You are free to remove or use it
+\newtheorem{definition}{\bf Definition}[chapter]
+\newtheorem{property}{Property}[chapter]
+\newtheorem{claim}{Claim}[chapter]
+\newtheorem{lemma}{\bf Lemma}[chapter]
+\newtheorem{proposition}{Proposition}[chapter]
+\newtheorem{theorem}{\noindent \bf Theorem}[chapter]
+\newtheorem{corollary}{\bf Corollary}[chapter]
+\newtheorem{pf}{Proof}[chapter]
+\newtheorem{example}{\bf Example}[chapter]
+\newtheorem{remark}{Remark}[chapter]
+
+% En caso de que el título sea muy largo, se puede ajustar el espacio
+% antes y después de este en las dos primeras páginas para que quede centrado.
+
+\makeatletter
+  \setlength{\beftitle}{50\p@\@plus24\p@}
+  \setlength{\afttitle}{40\p@}
+\makeatother
+\begin{frontmatter}
+\begin{titlepage}
+
+\mdate{Month Day, Year}         % date manuscript changed
+\version{1}                                     % manuscript version #
+\title[Tesis Ms Estad\'istica Francisco Vega ]
+   {\bf Estudio comparativo de un modelo geoestad\'istico utilizando un nuevo m\'etodo estimaci\'on de para matrices de covarianza}       
+\author[Author's Name]{Francisco Vega}
+
+\address{Facultad de Matem\'atica\\
+                   Pontificia Universidad Cat\'olica de Chile\\ 
+                   Vicu\~na Mackenna 4860\\
+                  Santiago, Chile\\
+                  {\it Tel.\/} : 56 (2) 354-2000}
+\email{favegav@uc.cl}
+
+\facultyto    {Faculty of Mathematics}
+\department   {Departamento de Estad\'istica}
+\faculty                             {Faculty of Mathematics}
+\degree                  {Mag\'ister en Estad\'istica}  %   {Magister en Estad\'istica}  %        
+                                 % or {Doctor in Engineering Sciences}    % {Doctor en Ciencias de la Ingenier\'ia}
+\advisor                            {Jonathan Acosta}
+%\committeememberA {Member A}
+%\guestmemberA            {Member B}
+%\ogrsmember                 {Member C}
+\subject                            {Spatial Statistics}
+\date                                 {Septiembre 2023}
+\copyrightname             {Francisco Alberto Vega Vargas}
+\copyrightyear               {0923}
+%\dedication                      {Gratefully to my parents and siblings}
+
+%%%%%%%%%%%%%%%%%%%%
+%       PRELIMINARIES                              %
+%-------------------------------------------------------%
+%      page i & ii: cover page                   %
+%      page iii: dedication                         %
+%%%%%%%%%%%%%%%%%%%%
+\NoChapterPageNumber
+\pagenumbering{roman}
+\maketitle
+%%%%%%%%%%%%%%%%%%%%
+%   EXTRA PAGES                                     %
+%-------------------------------------------------------%
+%      page --: not used                             %
+%%%%%%%%%%%%%%%%%%%%
+%\newpage
+%\thispagestyle{empty}
+%-------------------------------------------------------%
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%      page v: ACKNOWLEDGEMENTS                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%\phantomsection \label{acknowledgements} % Comment if hyperref is unused
+%\chapter*{ACKNOWLEDGEMENTS}           
+%\input{./chapters/acknowledgments.tex}
+%\cleardoublepage
+
+%-------------------------------------------------------%
+
+%%%%%%%%%%%%%%%%%%
+%          page v & up ---                      %
+%            Table of contents              %
+%            List of figures                     %
+%            List of tables                      %
+%%%%%%%%%%%%%%%%%%
+
+
+\end{titlepage}
+\end{frontmatter}

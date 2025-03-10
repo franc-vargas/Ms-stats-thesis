@@ -1,0 +1,126 @@
+# MATERIALES Y MÉTODOS
+
+## Datos
+
+```{r}
+library(tidyverse)
+library(sf)
+
+aysen.distance <- readr::read_rds(here::here("1_data/Aysen_DistanceMatrix.rds"))
+aysen.distance <- aysen.distance/1000
+sites <- 
+  readr::read_rds("1_data/joined_data.rds") |> 
+  rename(region = nombreRegion) |> 
+  filter(region == "XI REGION") |> 
+  janitor::clean_names() |> 
+  filter(especie != "SALMON PLATEADO O COHO") |> 
+  filter(codigo %in% rownames(aysen.distance)) 
+
+```
+
+El software utilizado fue R 4.3.3, la IDE RStudio 2023.12.1 Build 402 y el documento fue generado utilizando Quarto. 
+
+Los datos analizados corresponden a las declaraciones semanales de cargas parasitarias de juveniles (Juv), adultos móviles (AM) y hembras ovígeras (HO) de `r length(unique(sites$codigo))` sitios de producción de Salmón del atlántico y Trucha Arcoiris que fueron declaradas a SERNAPESCA durante el período 2015 - 2020. Se consideró como variable de interés el total de adultos (Hembras Ovígeras + Adultos Móviles), dado que son la fracción que se espera que sea capaz de desprenderse del pez y afectar otro hospedero. Además, esta fracción incluye tanto Hembras Ovígeras como Hembras sin sacos ovígeros.
+
+La abundancia de Caligus es altamente asimétrica, con una gran proporción de valores cercanos a 0, en especial en períodos cercanos al inicio de ciclo dado que los peces ingresan con 0 carga parasitaria al ambiente marino.
+
+Dada la naturaleza espacio-temporal de la fuente de datos, se optó por trabajar la metodología espacial separada de la temporal, en donde se consideraron tres métodos de resúmen de datos: 1) El promedio de los máximos por ciclo productivo de cada centro de cultivo, 2) El promedio mensual, después de calcular los máximos por año/mes de cada centro y 3) el promedio de los máximos por estación, por año, por centro.
+
+Dado que la normativa indica que las notificaciones son semanales para _S. salar_ y _O. mykiss_ además de  un período de descanso de 3 meses entre ciclos productivos por ACS, se consideró un nuevo ciclo cuando había pasado más de 8 semanas entre la medición $t$ y la medición $t-1$, en cada centro de cultivo, para efecto del cálculo de promedio de máximos.
+
+El análisis de la carga de adultos totales fue analizada de forma conjunta (sin diferenciar entre especie) para _S. salar_ y _O. mykiss_, dado que ambas especies son susceptibles, y también a que si se utilizara Kriging Universal se requeriría de la covariable \verb|especie| en los puntos a interpolar, algo que no es posible considerar debido a la naturaleza del problema.
+
+## Distancias
+
+Las distancias corresponden a las distancias $d_{ij}$ entre cada uno de los sitios en kilómetros. Las dos métricas de distancia utilizadas son la distancia euclidiana y la distancia de camino más corto. La distancia euclidiana fue calculada utilizando el paquete \verb|sf| [@pebesma_simple_2018], mientras que la distancia del camino más corto fue calculada a través del paquete \verb|gdistance| [@van_etten_package_2017] utilizando la función \verb|shortestPath|, la cual utiliza el algoritmo de Dijkstra y requiere una matriz de transición geo-corregida para calcular los valores de distancia correctamente.
+
+El proceso para obtener la matriz de transición es a base de un raster, en este caso: 
+
+\begin{enumerate}
+\item Creación de un raster de 5000 filas y 5000 columnas.
+\item Especificación de \verb|extent| del raster, en este caso (-75.5, -72) y (-46.5, -43.5).
+\item Rasterización de los polígonos de la región utilizando este raster base.
+\item Asignar a los valores \verb|NA| del raster (parte terrestre), el valor \verb|-999|.
+\item Asignar un valor \verb|NA| a las celdas del raster mayores a \verb|-999|.
+\item Asignar el valor \verb|1| a las celdas con valor \verb|-999|.
+\end{enumerate}
+
+Este proceso permite invertir el raster, logrando que el área marítima y los canales sean considerados terreno navegable, y volviendo la parte terrestre una barrera impasable. Este cálculo también corresponde a la distancia marítima o seawater distance entre dos puntos.
+
+La geo-correción se le realiza a la matriz de transición a través de la función \verb|geoCorrection|,  considerando el argumento \verb|type='c'| para la distancia del camino más corto.
+
+Se destaca que en distancias cortas y sin barreras de por medio, esta distancia sería equivalente a la distancia euclidiana dado que si no hay barreras que impidan el movimiento, el camino más corto es una línea recta entre el punto A y punto B.
+
+Las distancias a los puntos de interpolación fueron calculadas de la misma manera que para las distancias entre los centros de cultivo.
+
+## Generalidades del Kriging Ordinario
+
+En el presente trabajo se utilizó el Kriging Ordinadio como método de interpolación y predicción espacial, en donde asumimos que el parámetro $\mu$ es desconocido pero constante, donde las variaciones que observamos dependen de la función de varianza-covarianza entre los puntos observados.
+
+En este caso, el mejor predictor lineal insesgado (BLUP) bajo la función de pérdida cuadrática corresponde a la $\mathrm{E}[\boldsymbol{Z(s)}]\equiv\mu\boldsymbol 1$. El predictor lineal es aquel que minimiza $\mathrm{E}[(p(\boldsymbol Z|\boldsymbol s_0) - Z(\boldsymbol s_0))^2]$ donde se asume que el modelo sigue:
+
+$$
+\boldsymbol{Z(s)} = \mu\boldsymbol 1 + \boldsymbol{e(s)},\ \ \boldsymbol{e(s)}\sim(0,\boldsymbol\Sigma)
+$$
+
+Donde en este caso, $\mu$ es desconocido, y $\Sigma$ es conocido.
+
+Entonces, nuestro predictor lineal toma la forma de $p(\boldsymbol Z|\boldsymbol s_0) = \lambda_0 + \boldsymbol{\lambda}^\top\boldsymbol Z( \boldsymbol s)$
+
+\newpage
+
+## Semivariogramas
+
+Los semivariogramas empíricos fueron evaluados con el método clásico y con el estimador de módulo de Cressie. El ajuste de los semivariogramas fue realizado a través del método de mínimos cuadrados ponderados [@cressie_fitting_1985].
+
+Para el semivariograma Matérn y los siguientes semivariogramas, los siguientes parámetros representan:
+
++ $\phi$: Rango o parámetro de correlación, asociado a la distancia.
+
++ $\kappa$: Parámetro de suavidad, solo requerido en el semivariograma Matérn y Cauchy en esta instancia.
+
++ $\sigma^2$: Varianza del proceso.
+
+En los siguientes modelos de semivariograma, la expresión se incluye en términos de la correlación.
+
+[Semivariograma Matérn:]{.underline}
+
+El semivariograma Matérn se define como: 
+
+$$
+\gamma(\boldsymbol h) = \sigma^{2}\left(1 - \frac{2^{1-\kappa}}{\Gamma(\kappa)} \left(\frac{\|\boldsymbol {h}\|}{\phi} \right)^{\kappa}K_\kappa \left(\frac{\|\boldsymbol{h}\|}{\phi} \right) \right)
+$$
+
+Donde $\sigma^2>0$ es la varianza, $\phi>0$ es la escala (o rango/range), $\kappa>0$ es el parámetro de forma, $\Gamma(\cdot)$ es la función Gamma y $K_\kappa(\cdot)$ es la función de Bessel modificada de segundo tipo y orden $\kappa$ y $\|\boldsymbol{h}\|$ es la norma del vector $\boldsymbol h$ [@pardo-iguzquiza_geostatistics_2008].
+
+El modelo Matérn es un modelo que llega al _Sill_ de manera asintótica [@pardo-iguzquiza_geostatistics_2008], por lo que es práctica frecuente cosniderar el valor del _Sill_ que contiene el 90% de los valores del semivariograma.
+
+Y al expresarlo utilizando la covarianza:
+
+$$
+\boldsymbol \rho( \|\boldsymbol h\|) = \frac{1}{2^{\kappa-1}\Gamma(\kappa)}\left(\frac{\|h\|}{\phi}\right)^\kappa K_k\left(\frac{\|h\|}{\phi}\right)
+$$
+A continuación, los otros semivariogramas utilizados:
+
+[Semivariograma Gaussiano:]{.underline}
+
+$$
+\boldsymbol \rho( \|\boldsymbol h\|) = \exp\left[-\left(\frac{\|h\|}{\phi} \right)^2 \right]
+$$
+
+[Semivariograma Esférico:]{.underline}
+
+$$
+\boldsymbol \rho( \|\boldsymbol h\|) = 
+\begin{cases} 
+1 - 1.5 \frac{\|h \|}{\phi} +0.5 \left(\frac{\|h \|}{\phi}  \right)^3, \ h < \phi \\
+0,\ \mathrm{eoc.}
+\end{cases}
+$$
+
+[Semivariograma Cauchy:]{.underline}
+
+$$
+\boldsymbol \rho( \|\boldsymbol h\|) = \left[1 + \left(\frac{\|h\|}{\phi} \right)^2 \right]^{-\kappa}
+$$
+

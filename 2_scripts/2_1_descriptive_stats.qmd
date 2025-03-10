@@ -1,0 +1,398 @@
+---
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r libraries}
+#| echo: false
+#| warnings: false
+
+library(sp)
+library(sf)
+library(tidyverse)
+library(patchwork)
+ggplot2::theme_set(theme_bw())
+
+```
+
+```{r carga-datos}
+#| echo: false
+sites <- readr::read_rds("1_data/joined_data.rds") 
+sites <- sites |> dplyr::mutate(adultos_totales = promHo + promAm )
+shape <- readr::read_rds("1_data/sites_coordinates.rds")
+
+shape@data$coordinates <- shape@coords
+
+site_vector <- sites |> 
+  filter((Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS")) |> 
+  pull(Codigo) |> 
+  unique()
+
+shape2 <- subset(shape@data, N_CODIGOCE %in% site_vector)
+
+shape_aysen <- subset(shape2, grepl("AYSÉN", REGION))
+
+chile <- chilemapas::generar_regiones()
+aysen_base <- chile |> dplyr::filter(codigo_region == 11)
+```
+
+# Análisis exploratorio
+
+En la actualidad tenemos `r nrow(shape2)` concesiones otorgadas para Salmón del Atlántico y Trucha Arcoíris entre la región de Los Lagos (X), Aysén (XI) y Magallanes (XII). Las principales regiones en las que la industria se ha establecido son la X y XI.
+
+La XI región presenta un total de `r length(unique(shape_aysen$AGRUPCONCE))` ACS, las cuales fueron creadas por el Servicio Nacional de Pesca y Acuicultura en el año 2010 posterior a la crisis del virus ISA y, lo cual permite generar estrategias de baños antiparasitarios, estrategias de cosecha y períodos de descanso coordinado para cada una de las ACS.
+
+Cada ACS y centro de cultivo tiene características específicas. A continuación, se presenta lo que ocurre a nivel de las 10 concesiones con más observaciones.
+
+Se observa alta variabilidad independiente de cada ACS, principalmente debido a la naturaleza temporal y cero inflada de los datos recolectados por SERNAPESCA.
+
+
+```{r}
+bold <- function(x) {paste('{\\textbf{',x,'}}', sep ='')}
+
+resumen_general <- 
+  sites |> filter(nombreRegion == "XI REGION") |> 
+  summarise(n = n(),
+            media = mean(adultos_totales, na.rm = T),
+            sd = sd(adultos_totales, na.rm = T),
+            cv = scales::percent(sd(adultos_totales, na.rm = T)/
+                                   mean(adultos_totales, na.rm = T)),
+            mediana = median(adultos_totales, na.rm = T),
+            maximo = max(adultos_totales, na.rm = T),
+            .by = ACS) |> 
+  filter(n > 10) |> 
+  arrange(desc(n)) |> 
+  slice_head(n = 10)
+
+
+
+# tabla_resumen <- rbind(resumen_general, resumen_CENTRO)
+
+```
+
+```{r}
+#| label: tbl-acs
+#| tbl-cap: "Estadística descriptiva de adultos totales en las 10 ACS con mayor cantidad de observaciones"
+
+resumen_general |> 
+  knitr::kable(digits = 2, 
+               format = "latex",
+               col.names = c("ACS", 
+                             "n", "Media",
+                             "Desv. Estándar",
+                             "C. Variación","Mediana",
+                             "Máximo"),
+                              knitr.kable.NA = '',
+                              align = "lcccccc"
+                              ) |> 
+  kableExtra::kable_styling(latex_options = c("scale_down", 
+                                              "HOLD_position")) |> 
+  kableExtra::row_spec(0, bold = TRUE) 
+
+```
+
+\newpage
+
+Dentro de la ACS 32, los 10 principales centros también presentan un alto coeficiente de variación. Se destaca la diferencia entre las medias de etos centros. Si bien todos presentan variabilidad similar con respecto a su media, muchos de ellos se encuentran en promedio más cercano a 1, mientras que otros cercanos a un promedio de 2 o 3, lo que podría indicar ciertas características del manejo de la concesión, de los peces, o características inherentes a su localización geográfica.
+
+```{r}
+resumen_CENTRO <- 
+  sites |> 
+   filter(ACS == "ACS 32") |> 
+  summarise(n = n(),
+            media = mean(adultos_totales, na.rm = T),
+            sd = sd(adultos_totales, na.rm = T),
+            cv = scales::percent(sd(adultos_totales, na.rm = T)/
+                                   mean(adultos_totales, na.rm = T)),
+            mediana = median(adultos_totales, na.rm = T),
+            maximo = max(adultos_totales, na.rm = T),
+            .by = Codigo) |> 
+  arrange(desc(n))  |> 
+  filter(n > 10) |> 
+  slice_head(n = 10)
+```
+
+```{r}
+#| label: tbl-acs32
+#| tbl-cap: "Est. Descriptiva de los 10 principales centros de la ACS 32"
+resumen_CENTRO |> 
+  knitr::kable(digits = 2, 
+               format = "latex",
+               col.names = c("Centro", 
+                             "n", "Media",
+                             "Desv. Estándar",
+                             "C. Variación","Mediana",
+                             "Máximo"),
+                              knitr.kable.NA = '',
+                              align = "lcccccc"
+                              ) |> 
+  kableExtra::kable_styling(latex_options = c("scale_down", 
+                                              "HOLD_position")) |> 
+  kableExtra::row_spec(0, bold = TRUE) 
+```
+
+
+\newpage
+
+[Descripción temporal:]{.underline}
+
+La base de datos original contiene un total de `r nrow(sites)` observaciones de `r length(unique(sites$Codigo))` centro de cultivo de salmones en un período del 2015 a 2021, correspondientes a 88 Asociaciones de Concesiones (en adelante, ACS o barrios). Para el análisis, se consideraron solo los centros de cultivos de Salmón del atlántico (_Salmo salar_) y Trucha Arcoíris (_Oncorhynchus mykiss_) pertenecientes a la XI Región de Chile. La exclusión de las especies como el Salmón Coho es principalmente debido a su resistencia frente al piojo del salmón.
+
+En el siguiente gráfico obseramos la carga total de parásitos de cada ACS en la XI Región de Aysén. Se excluyeron las concesiones con carga muy cercana a 0 durante todo el período, además de las que fueron otorgadas por un período específico de tiempo.
+
+Se observan patrones estacionales marcados en cada uno de los barrios. Esto correspondería a las estaciones del año, junto con los descansos sanitarios que se realizan al cierre de las ACS.
+
+```{r}
+#| fig-cap: "Adultos totales por ACS en la XI Región"
+#| fig-height: 4
+#| fig-width: 6
+#| label: fig-time-aysen
+
+region_xi_load <- 
+  sites |> 
+  group_by(fechaDeclaracion, nombreRegion, ACS) |> 
+  filter(nombreRegion == "XI REGION" &
+           !grepl("(.*\\b2[3-9]{1}|.*\\b3[15]|mod|.*\\b(18)[A B E]|(22 C|19 B))", 
+                  ACS) &
+           (Especie == "SALMON DEL ATLANTICO"|Especie == "TRUCHA ARCOIRIS")) |>
+           summarize(suma = sum(promHo + promAm)) |> 
+  arrange(fechaDeclaracion) |> 
+  ggplot(aes(x = fechaDeclaracion, y = suma, colour = ACS))+
+  geom_path()+
+  facet_wrap(~ACS)+
+  theme_bw()+
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 6))+
+  labs(x = "Fecha de declaración",
+       y = "Adultos totales por ACS")
+region_xi_load
+```
+
+\newpage
+
+Además, la serie temporal fue evaluada en la ACS 32, donde se observa que los centros activos dentro de un barrio varían en su fecha de ingreso y término, dado que algunos se encuentran presentes en distintos períodos o inactivos por largos períodos de tiempo.
+
+```{r}
+#| label: grafico-ACS32
+#| fig-cap: "Carga de promedio de Adultos totales en centros de la ACS 32"
+#| fig-height: 6
+#| fig-width: 6
+
+sites |> 
+  group_by(fechaDeclaracion, nombreRegion, ACS) |> 
+  filter(nombreRegion == "XI REGION" & ACS == "ACS 32" & 
+           Codigo %in% resumen_CENTRO$Codigo) |>
+  arrange(Codigo, fechaDeclaracion) |> 
+  ggplot(aes(x = fechaDeclaracion, 
+             y = promHo+promAm, 
+             colour = factor(Codigo)))+
+  geom_path()+
+  facet_wrap(~Codigo, ncol = 2)+
+  theme_bw()+
+  theme(legend.position = "none",
+        axis.text.x = element_text(size = 6))+
+  labs(x = "Fecha de declaración",
+       y = "Adultos totales")
+
+```
+
+\newpage
+
+[Descripción geográfica:]{.underline}
+
+```{r}
+shape2 <- shape2[-c(8,5),]
+sites <- sites |> left_join(shape2[,c(3, 10, 22)], by = c("Codigo"= "N_CODIGOCE"))
+
+summary_sites <- 
+  sites |> 
+  mutate(critical = if_else(promHo >= 3, 1, 0)) |>
+  group_by(nombreRegion, ACS,Especie, Codigo) |> 
+  summarize(max_caligus = max(promHo + promAm, na.rm = T)) |> 
+  left_join(shape2[,c(3, 10, 22)], by = c("Codigo"= "N_CODIGOCE")) |> 
+  filter(!is.na(coordinates[,1]))
+
+summary_aysen <- 
+  summary_sites |> 
+  filter(nombreRegion == "XI REGION" &
+           (Especie == "SALMON DEL ATLANTICO"| Especie == "TRUCHA ARCOIRIS")) 
+
+p_aysen_load <- 
+  ggplot(aysen_base)+
+  geom_sf()+
+  geom_point(data = summary_sites, 
+             aes(x = coordinates[,1],
+                 y = coordinates[,2],
+                 colour = max_caligus),
+             alpha = 0.7,
+             size = 1)+
+  coord_sf(xlim = c(-74.7, -72.5), ylim = c(-46.3, -43.7))+
+  labs(x = "longitud",
+       y = "latitud")+
+  scale_colour_gradientn(colours = c("darkblue", "yellow" , "red")
+                        )+
+  theme_bw()+
+  labs(colour = "Max. Adultos Totales")+
+  theme(axis.text.x = element_text(size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position = "bottom",
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 9))
+
+```
+
+A continuación se evaluó el máximo de adultos totales por centro de cultivo como medida resumen, debido a la naturaleza cero-inflada del conjunto de datos. 
+
+Se observa que en general, la mayoría de los centros presenta máximos menores a 100 adultos totales, y que los centros con máximos entre 100 y 150 adultos totales se encuentran en zonas cercanas.
+
+```{r fig-load-sites}
+#| fig-cap: "Máximo de adultos totales por centro de cultivo"
+#| fig-height: 6
+#| fig-width: 5
+#| label: fig-load-sites
+
+
+p_aysen_load
+
+hist_aysen <- 
+  sites |> 
+  filter(nombreRegion == "XI REGION" & Especie != "SALMON PLATEADO O COHO") |> 
+  ggplot(aes(x = promAm+promHo))+
+  geom_histogram(bins = 50, colour = "black", fill ="white")+
+  theme_bw() + labs(x = "Adultos Totales", y = "Frecuencia") + 
+  theme(axis.text.x = element_text(size = 8))
+  
+```
+
+\newpage
+
+Al evaluar la carga de adultos totales (Prom HO + Prom AM), se observa que corresponde a una variable cero-inflada que puede tomar valores extremos de hasta más de 200 adultos totales promedio. Esto ocurre dado que los centros al ingresar al ambiente marino no presentan carga de caligus, y una vez comienza a avanzar el ciclo se comienzan a infestar por los estadíos juveniles del parásito.
+
+```{r}
+#| label: hist-aysen
+#| fig-cap: "Histograma de la variable respuesta (Adultos totales) en la XI región de Aysén"
+#| fig-width: 5
+#| fig-height: 2
+hist_aysen
+```
+
+```{r}
+max.summary <- readr::read_rds("1_data/max_summary_AysenLagos.rds")
+aysen.summary <- max.summary |> filter(nombre_region == "XI REGION")
+aysen.summary$re_scaled_total_adults <- aysen.summary$max.adultos_totales / 40
+aysen_coords <- 
+  aysen.summary |>
+  dplyr::select(lon, lat, codigo)
+
+
+aysen.distance <- readr::read_rds("1_data/Aysen_DistanceMatrix.rds")
+aysen.distance <- aysen.distance/1000
+ids <- unique(aysen.summary$codigo)
+aysen.dist.subset <- aysen.distance[rownames(aysen.distance)%in% ids, 
+                                    colnames(aysen.distance) %in% ids]
+aysen.dist.subset <- aysen.dist.subset[order(match(rownames(aysen.dist.subset),
+                                                   ids)), 
+                                       order(match(colnames(aysen.dist.subset), ids))]
+
+origin <- st_as_sf(aysen_coords[,c(1:2)], coords = c("lon", "lat"),
+                   crs = st_crs("WGS84"))
+dest <- st_as_sf(aysen_coords[,c(1:2)], coords = c("lon", "lat"),
+                 crs = st_crs("WGS84"))
+distances <- st_distance(origin, dest, by_element = F )
+
+
+distances <- units::set_units(distances, "km")
+distances <- as.dist(distances) |> as.matrix()
+rownames(distances) <- aysen_coords$codigo
+colnames(distances) <- aysen_coords$codigo
+```
+
+
+```{r}
+a <- as.vector(aysen.dist.subset)
+b <- as.vector(distances)
+
+dist_comparison <- 
+  ggplot()+
+  geom_jitter(aes(x = b, y = a), alpha = 0.1)+
+  geom_vline(xintercept = 25, colour = "darkred") +
+  geom_abline(slope = 1, colour = "darkgreen", linewidth = 1.5,
+              alpha = 0.7) + 
+  labs(y = "Shortest-Path (km)", x = "Euclidiana (km)")
+```
+
+```{r}
+
+lineas_coords <- readr::read_rds("./2_scripts/0_Presentacion_SOCHE/lineas_noneuc.rds")
+matrix_coords <- as.matrix(aysen_coords[,c(1:2)])
+aux_shortest <- st_as_sf(data.frame(lineas_coords), coords = c("x", "y"),
+                   crs = st_crs("WGS84"))
+
+aux_temp <- vector(mode = "numeric", length = dim(aux_shortest)[1])
+for(i in 1:dim(aux_shortest)[1]){
+  if(i == dim(aux_shortest)[1]) break
+  
+  aux_temp[i] <- st_distance(aux_shortest$geometry[i], 
+                                         aux_shortest$geometry[i+1], 
+                                         by_element = F )
+
+  
+}
+aux_temp <- sum(aux_temp)/1000
+aux_euc <- st_as_sf(data.frame(x = c(matrix_coords[16,1], 
+                                     matrix_coords[19,1]),
+                               y = c(matrix_coords[16,2], 
+                                     matrix_coords[19,2])), coords = c("x", "y"),
+                   crs = st_crs("WGS84"))
+
+aux_euc <- st_distance(aux_euc, by_element = F )[2,1] / 1000
+tag <- paste("Euclidian: ", round(aux_euc,0), " km\n", "Shortest-Path: ", round(aux_temp,0), " km", sep = "")
+example_distance <- 
+  ggplot(aysen_base) + 
+  geom_sf() +
+  geom_point(
+    fill = "black",
+    data = aysen.summary[c(16,19),],
+    alpha = 0.7,
+    aes(x =  lon,
+        y = lat)) + 
+  geom_path(data =data.frame(lineas_coords),
+            aes(x=x, y=y,
+                colour = "Shortest-Path"),
+            alpha = 0.7) + 
+  geom_segment(data = data.frame(matrix_coords), 
+            aes(x = matrix_coords[16,1], 
+                y = matrix_coords[16,2],
+                xend = matrix_coords[19,1],
+                yend = matrix_coords[19,2],
+                colour = "Euclidian"),
+            alpha = 0.7) + 
+  theme_bw() + 
+  labs(colour = "", x = "longitud", y = "latitud",
+       tag = tag) +
+  scale_colour_manual(values = c("Shortest-Path" = "darkred", 
+                                 "Euclidian" = "darkgreen")) + 
+  coord_sf(xlim = c(-73.7, -72.64745), ylim = c(-45.73, -44.4)) + 
+  theme(#legend.position = "top",
+        axis.text.x = element_text(angle = 90),
+        legend.key.size = unit(0.5, 'cm'),
+        plot.tag.position = c(.75,.4781),
+        plot.tag = element_text(hjust =0, size=9))
+
+```
+
+Al evaluar ambas matrices de distancia podemos ver que en distancias menores a 25 km la distancia del camino más corto tiene valores relativamente cercanos a la distancia Euclidiana, mientras que a medida que aumentamos la distancia, consistentemente se observan valores menores de distancia euclidiana. 
+
+```{r}
+#| label: distance-comparison-plot
+#| fig-width: 6
+#| fig-height: 3
+#| fig-cap: "Comparación entre las distancias producidas por shortest-path, y la distancia euclidiana"
+#| fig-align: center
+dist_comparison + example_distance
+```
+
+
+
+

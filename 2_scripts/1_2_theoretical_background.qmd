@@ -1,0 +1,329 @@
+# MARCO TEÓRICO {#sec-theoretical-background}
+
+## REGIÓN DE AYSÉN
+
+A nivel oceanográfico, la Región de Aysén se caracteriza por ser un ecosistema sub-antártico con un complejo sistema de fiordos, canales, golfos, estuarios y bahías [@iriarte_oceanographic_2014].
+
+En estos sistemas de fiordos se producen complejos sistemas de gradientes de salinidad horizontales y verticales debido a la afluencia de agua dulce de múltiples sistemas [@iriarte_oceanographic_2014].
+
+En general, se observa una distribución de temperatura y salinidad distinta dependiendo de la zona en la que se encuentre. Las zonas norte y centrales de la región de aysén presentan salinidades menores a 34 ppt y temperaturas mayores a 10°C hasta llegar a la aguas sub-antárticas (aproximadamente desde los 55°S). En la zona sub-antártica se presentan masas de agua formadas remotamente, como las masas de aguas del frente polar que se caracterizan por temperaturas menores a 6°C y altas salinidades (33.7-34.5 ppt) [@iriarte_oceanographic_2014]. 
+
+Por otro lado, la relación entre el fitoplancton y la disponibilidad de macronutrientes, debido a la disponibilidad de nitratos y ácido silicilco en las aguas superficiales de algunso fiordos, junto con el ingreso de aguas conteinentales con bajo ratio de nitratos explica la dominancia de dinoflagelados en el fitoplancton de la región [@pantoja_oceanography_2011].
+
+A continuación, se incluye la geografía de la Región de Aysén y lo que motiva el uso del camino más corto, la cantidad de fiordos y canales pequeños que tiene la región.
+
+```{r}
+#| fig-width: 5
+#| fig-height: 6
+#| fig-cap: "Región de Aysén"
+chilemapas::generar_regiones() |> 
+  dplyr::filter(codigo_region == "11") |> 
+  ggplot2::ggplot() + ggplot2::geom_sf() +
+  ggplot2::coord_sf(xlim = c(-74.7, -72.5), ylim = c(-46.3, -43.7)) + 
+  ggplot2::theme_bw()
+```
+
+
+\newpage
+
+## SALMONICULTURA
+
+En la salmonicultura chilena se cultivan principalmente tres especies salmonídeas: Salmón del atlántico (*Salmo salar*), Trucha Arcoiris (*Oncorhynchus mykiss*) y el Salmón Coho o Salmón del pacífico (*Oncorhynchus kisutch*). De estas tres especies, las principales son el Salmón del atlántico y la Trucha Arcoiris.
+
+Las especies en el ambiente marino son cultivadas en balsas-jaulas de 30 x 30 o 40 x 40 mts con profundidad variable segun las redes instaladas.
+
+Durante el año 2023 en la X región de Los Lagos, la XI región de Aysén y la XII región de Magallanes se produjeron 445.414, 513.084 y 128.876 toneladas de salmón respectivamente [@sernapesca_anuario_2024]. De estas 1.087.374 toneladas de salmón producidas en estas tres regiones, 74.6 % corresponde a Salmón del Atlántico y Trucha Arcoiris. En particular en la región de Aysén, el 86 % corresponde a producción de Salmón del Atlántico y Trucha Arcoiris [@sernapesca_anuario_2024], las cuales son las especies más susceptibles a la infestación por *C. rogercresseyi* [@bravo_adult_2024].
+
+El ciclo general de los salmonídeos se caracterizan principalmente por tener tres grandes fases: una fase de desarrollo inicial en agua dulce, una segunda fase de esmoltificación donde se adaptan en aguas salobres, y una fase de crecimiento en agua de mar. En esta última fase, es donde el crecimiento a la talla comercial se realiza.
+
+[Salmón del atlańtico:]{.underline} Esta especie se caracteriza por tener una temperatura ideal de crecimiento cercana a los 10 °C [@handeland_effect_2008], similar a lo observado en las regiones de Los Lagos, Aysén y Magallanes. A nivel de de producción, los ciclos en agua de mar que se encuentran entre 12 a 18 meses en agua de mar. El peso promedio de cosecha es cercano a los 5 kg promedio, dependiendo de los requerimientos de la empresa y mercado de destino.
+
+[Trucha arcoíris:]{.underline} La temperatura ideal de esta especie se encuentra entre 13 - 18°C [@idenyi_optimizing_2025, @jiang_effects_2021], pero capaz de mantenerse en un rango amplio de temperaturas. A nivel productivo, se caracteriza por tener ciclos de prodicción cortos de 8 a 10 meses en agua de mar, llegando a un peso promedio de cosecha de aproximadamente 3.2 kg. 
+
+## *Caligus rogercresseyi*
+
+### GENERALIDADES
+
+La caligidosis es una enfermedad parasitaria propia de los peces, en Chile producida principalmente por el ectoparásito _C. rogercresseyi_, también conocido como piojo del salmón. Esta patología se considera una de los problemas sanitarios más relevantes durante la engorda en agua de mar debido a los costos de vigilancia y de control que implica.
+
+Este parásito tiene una baja especificidad de hospedero, donde se ha identificado una gran de hospederos naturales, como _E. maclovinus_, _Odonthestes regia_ y _Paralichthys microps_, las cuales se encuentran frecuentemente alrededor de centros de producción de salmon atraídos por las excedentes de alimento.
+
+[Normativa:]{.underline} La normativa aplicable al control de caligus corresponde al PSEVC - Caligus o "Programa de Salud Específico de Vigilancia y Control de Caligidosis", el cual establece las bases para el monitoreo y seguimiento de los centros de engorda en agua de mar, donde cada centro debe muestrear en 4 jaulas indicadas por SERNAPESCA 10 peces, y contar los distintos estadíos de _C. rogercresseyi_ [@sernapesca_programa_2022]. En particular, se destaca la clasificación de SERNAPESCA:
+
+- Juveniles: Chalimus I -- Chalimus IV.
+
+- Adultos Moviles (AM): Machos + Hembras sin sacos ovígeros.
+
+- Hembras Ovígeras (HO): Hembras con sacos ovígeros.
+
+Esto principalmente porque la identificación de los distintos estadíos del parásito es compleja de realizar muestreos a simple vista.
+
+SERNAPESCA establece distintas ventanas de tratamiento por Macrozona, en donde los centros tienen permitido realizar baños con productos farmacológicos durante ese período, con el fin de disminuir la chance de que el parásito genere resistencia.
+
+El segundo método de control corresponde al establecimiento de Centros de Alta Diseminación, los cuales corresponden a centros que hayan terminado una ventana de baño con cargas de HO mayores a 3; a un CAD se le puede solicitar:
+
+- Solicitud de cosecha anticipada del 50% de la biomasa si fue categorizado como CAD 3 veces consecutivas, la cual deberá efectuarse en 21 días consecutivos.
+
+- Solicitud de cosecha anticipada del 25% de la biomasa para aquellos centros que presenten 3 categorizaciones de CAD en 6 evaluaciones consecutivas, la cual deberá efectuarse en 21 días consecutivos.
+
+### CICLO DE VIDA DEL PARÁSITO
+
+_C. rogercresseyi_ se caracteriza por tener un ciclo de vida directo en peces, donde se observan estadíos parásitos y estadíos de vida libre, sin observarse un hospedero intermediario.
+
+En los estadíos de vida libre se encuentra el Nauplio I, Nauplio II y Copepodito. Los dos primeros estadíos corresponden a vida libre planctónico, mientras que el copepodito es el estadío infestante. El proceso desde eclosión hasta llegar a copepodito a 12°C demora aproximadamente 10 días en condiciones experimentales controladas [@bravo_reproductive_2010].
+
+El estadío parásito se caracteriza por presentar 5 estadíos: Chalimus I, Chalimus II, Chalimus III, Chalimus IV y el estadío adulto. Los estadíos de Chalimos son estadíos fijos, mientras que los adultos (inmaduros y maduros) son estadíos móviles. Este último presencia dimorfismo sexual entre hembras y machos. Desde el momento de infestación hasta adulto maduro toma aproximadamente 18 días a 12°C [@bravo_reproductive_2010].
+
+El número de aproximado huevos por cada saco ovígero es de 45, el cual puede aumentar durante el invierno debido a la disminución de temperatura o en condiciones que sean más o menos apta para el parásito [@bravo_reproductive_2010].
+
+![Ciclo de Caligus @carvajal_native_1998](0_Presentacion_SOCHE/Images/ciclo-caligus.jpg){height=70% width=70%}
+
+
+\newpage
+
+En el cultivo de salmones solo se observan los estadíos parásitos, en donde SERNAPESCA clasifica a los Chalimus I - IV como "Juveniles" y los adultos son divididos entre "Adultos Moviles" (AM) y "Hembras Ovígeras" (HO). Esta última diferenciación se realiza dado que si bien ambos estadíos son adultos, la diferenciación a simple vista entre estos estadíos es compleja.
+
+El ciclo del parásito se caracteriza por tener una duración promedio de 7 - 9 días como estadío libre antes de llegar a volverse copepodito, y entre 12 a 15 días para llegar a su respectivo estadío adulto una vez infesta a un salmón [@bravo_reproductive_2010]. Al ser un animal ectotérmico, su ciclo y metabolismo se ven afectados directamente por la temperatura, por lo que temperaturas más altas reducen el tiempo que requiere el parásito para completar su ciclo [@bravo_reproductive_2010].
+
+### TRATAMIENTOS
+
+Actualmente se encuentran distintos tipos de tratamiento disponibles para este parásito y con distintas metodologías. 
+
+- Inmersión en Jaula: Azametifos, Peróxido de Hidrógeno, Deltametrina y Lyptus
+
+- Inmersión en barco con estanco cerrado: Hexaflumurón, agua dulce.
+
+- Tratamientos físicos en barcos en estancos cerrados: Hydrolicer, Thermolicer.
+
+- En alimento en agua dulce: Benzoato de Emamectina, Lufenurón.
+
+Cada uno de estos tratamientos tiene distintos costos, siendo los tratamientos de inmersión en jaula los más baratos (a excepción del peróxido de hidrógeno), y donde los tratamientos en barcos a través de estancos o métodos especializados permiten capturar los caligus que se desprenden del pez.
+
+Además, los tratamientos como el azametifos, deltametrina, peróxido de hidrógeno y lyptus afectan principalmente el estadío adulto del parásito, aunque recientes investigaciones sugieren que también podría haber un efecto en Chalimus III y Chalimus IV [@agusti_sensitivity_2016]. En particular, el peróxido de hidrógeno no mata al parásito sino que logra un desprendimiento del estadío adulto, en donde se observa una reinfestación si el parásito no es removido del medio [@bravo_effectiveness_2010].
+
+Los otros medios físicos como Hydrolicer y Thermolicer, en general se utilizan en menor medida dado al daño que le infringen a los peces en las escamas y piel, ya que este daño puede facilitar el ingreso de otros patógenos al debilitar la primera barrera de defensa.
+
+\newpage
+
+## METODOLOGÍAS
+
+### MÉTODOS PREVIOS
+
+[M. espacio-temporal estocástico [@aldrin_space-time_2013]:]{.underline} Modelo propuesto por [@aldrin_space-time_2013], que utiliza la distribución binomial negativa cero-inflada, en donde se modela la media a través de la siguiente especificación: 
+
+$$
+\mu_{it} = \mathbf{S}_{it}\cdot \boldsymbol{\kappa}_{it}^{susc}\cdot(\lambda_{it}^w + \lambda_{it}^d + \lambda_{it}^o)
+$$
+Donde los dos efectos multiplicativos: 
+
+- $\mathbf{S}_{it}$ es una variable indicadora que toma el valor 1 cuando el sitio $i$ está activo, o 0 en otro caso.
+
+- $\boldsymbol{\kappa}_{it}^{susc}$ es un factor proporcional a la susceptibilidad del sitio $i$ y depende de variables explicativas que caracterizan las condiciones de los peces de la granja $i$ en el mes $t$. Este término toma la forma: $\boldsymbol{\kappa}_{it}^{susc} = \exp\left(\sum_k \beta_k^{susc}\mathbf{x}_{ikt}^{susc}\right)$, donde $\mathbf{x}_{ikt}^{susc}$ son las variables explicativas del sitio $i$ en el mes $t$ y $\boldsymbol{\hat\beta_k}$ son los coeficientes asociados a las covariables.
+
+Los términos aditivos especificados corresponden a 
+
+1. $\lambda_{it}^w$ representa la infección dentro de la granja actual de interés. Este parámetro es modelado a través de una suma ponderada de las últimas cargas de caligus del sitio $i$.
+
+2. $\lambda_{it}^d$ corresponde a la infección de los sitios vecinos, la cual de pende de la distancia de camino más corto (seawater distance) a estos sitios y en sus abundancias de caligus. Este término corresponde a una suma de las contribuciones de todas las granjas $i\neq j$.
+
+3. $\lambda_{it}^o$ representa infección de otras fuentes no especificadas, como reservorios de infección o peces hospederos de vida libre. Se modela actualmente como una constante $\gamma$, y actúa como un término de intercepto.
+
+El parámetros $\lambda_{it}^w$ es modelado de la siguiente forma:
+
+$$
+\lambda_{it}^w = \left(y_{i(t-1)}/\boldsymbol{n} + \sum_{l=2}^{l=L} \boldsymbol \rho_ly'_{i(t-1)}/\boldsymbol n  \right)^\alpha \cdot \boldsymbol S_{i(t-1)}
+$$
+
++ $y'_{i(t-1)}$ es igual a $y_{i(t-1)}$ cuando el centro de cultivo ha estado activo des de los meses $t-1$ a $t-l$, pero es cero si el centro ha estado inactivo en cualquiera de estos meses.
+
++ $\alpha$ es un parámetro positivo que permite modelar dependencias no lineales en los conteos de caligus previos.
+
++ $\rho_{l=2},\dots,\rho_{l=L}$ son parámetros que consideran el efecto de cargas de los meses anteriores. Corresponde a una suma ponderada de las cargas de los meses previos.
+
+El parámetro $\lambda_{it}^d$ corresponde a 
+
+$$
+\lambda_{it}^d = \sum_{j\neq i}\exp(\phi_0 + \phi_1(d_{ij}^{\phi_2}-1)/\phi_2)\kappa_{j(t-1)}^{inf} \\
+\cdot \left(y_{j(t-1)}/n + \sum_{l=2}^{l=L} \boldsymbol \rho_ly'_{i(t-1)}/\boldsymbol n \right)^\alpha \cdot \boldsymbol S_{j(t-1)}
+$$
+Donde,
+
++ $\phi_0$ cuantifica la importancia de infestaciones cercanas comparada con otras fuentes.
+
++ $d_{ij}$ es la distancia marítima (o camino más corto) entre los centros $i$ y $j$
+
++ $\phi_1$ y $\phi_2$ son parámetros que reflejan el efecto de la distancia marítima entre los centros vecinos. La transformación $(d_{ij}^{\phi_{2}}-1)/\phi_2$ corresponde a la transformación de Box-Cox. cuando $\phi_2$ se acerca a 0, la transformación corresponde a $\log(d_{ij})$.
+
++ $\kappa_{jt}^{inf}$ corresponde a un factor proporcional a la infecciosidad del centro $j$, dependiendo de las variables explicativas que caracterizan al centro $j$.
+
+Este último término de infeccionsidad tiene la forma: 
+
+$$
+\kappa_{jt}^{inf} = \exp\left(\sum_k \beta_{k}^{inf}x_{jkt}^{inf} \right)
+$$
+
+Los parámetros $\alpha, \gamma, \phi_0, \phi_1, \phi_2, \rho_2, \dots, \rho_p$ y todos los $\boldsymbol\beta$ unidos en un vector de parámetros $\boldsymbol \theta$, el cual se encontró maximizando la log-verosimilitud.
+
+[M. AR de Estado Espacio [@elghafghuf_estimating_2020]:]{.underline} Son modelos de estado-espacio multivariados (MARSS) propuestos por [@elghafghuf_estimating_2020], se han utilizado para estimar la carga de pre-adultos y adultos móviles (PAAM) y hembrás ovígeras (AF) de forma conjunta. El modelo tiene la siguiente especificación: 
+
+$$
+\boldsymbol{\tilde{\theta}_t} = \boldsymbol{B}\boldsymbol{\tilde{\theta}_{t-1}} + \boldsymbol{u} + \boldsymbol{\tilde{\beta}}\boldsymbol{X} + \boldsymbol{w}_t
+$$
+\newpage
+
+El cual corresponde a:
+
+$$
+\begin{aligned}
+\begin{bmatrix} \theta_{p,t} \\ \theta_{a,t}\end{bmatrix} 
+&= 
+\begin{bmatrix}b_p & 0 \\ b_{ap} & b_a \end{bmatrix}
+\begin{bmatrix} \theta_{p,t-1} \\ \theta_{a,t-1}\end{bmatrix} +
+\begin{bmatrix} u_p \\ u_a\end{bmatrix} \\
+& + \begin{bmatrix} \beta_{bath,p} & \beta_{feed,p} & \beta_{IIP,p} & \beta_{EIP,p} & \beta_{temp,p} \\
+\beta_{bath,a} & \beta_{feed,a} & 0 & 0 & \beta_{temp,a}
+\end{bmatrix}
+\begin{bmatrix}
+x_{bath,t} \\ x_{feed,t} \\ x_{IIP,t} \\ x_{EIP,t} \\ x_{temp,t}
+\end{bmatrix} + \begin{bmatrix}W_{p,t}\\ W_{a,t}\end{bmatrix}
+\end{aligned}
+$$
+
+En donde: 
+
+- $\boldsymbol{\tilde{\theta}_t}$ es el vector de abundancia de PAAM y AF en escala logarítmica en el tiempo $t$.
+
+- $\boldsymbol{\tilde{B}}$ tiene los términos AR-1 para la abundancia de caligus en la diagonal, y en la off-diagonal se agrega un término para agregar la contribución de pre-adultos a la carga de hembras ovígeras (AF)
+
+- El vector $\boldsymbol{\tilde{u}}$ es un vector de escala.
+
+- $\boldsymbol{\tilde{X}}_t$ son las covariables y $\boldsymbol{\tilde{\beta}}$ son sus respectivos coeficientes.
+
+- $\boldsymbol{\tilde{w}}_t$ es un vector de errores en el tiempo $t$, los cuales se asumen que tiuenen una distribución normal multivariada con media cero, y matriz de varianza-covarianza $\boldsymbol{\tilde{Q}}=\begin{bmatrix}q_p & q_{ap}\\q_{ap}&q_a\end{bmatrix}$.
+
+Estos modelos se enfocan en predecir las hembras ovígeras de manera separada al resto de la carga parasitaria, en particular porque estas son las que se consideran más relevantes para cuantificar la presión de infestación que aporta el centro en ese momento.
+
+La estimación del modelo MARSS propuesto en este estudio fue realizada a través del algoritmo EM implementado en el paquete MARSS de R.
+
+[M. de dos partes con efectos. aleatorios [@rees_spatial_2015]:]{.underline} Corresponde a la estimación en dos partes propuesta por [@rees_spatial_2015], se utiliza  un modelo multivariable de efectos aleatorios para determinar los factores más relevantes en la abundancia promedio del estadío fijo del piojo del salmón en salmónidos de vida libre en British Columbia (Candadá) en una zona $i$ y un mes $t$.
+
+- Primera parte: Modelamiento de la chance de que la media de infestación fuese mayor que 0 utilizando regresión logística.
+
+- Segunda parte: Modelamiento del conteo de piojos del salmón dado que los conteos eran mayor a 0 utilizando regresión Gamma. 
+
+- Efecto aleatorio: Los efectos aleatorios fueron incluídos considerando muestreos repetidos en cada zona $i$, y la potencial autocorrelación entre mediciones mensuales fue agregada considerando un outcome desfasado en $t-1$ en las covariables.
+
+Se destaca que este es un método que se utilizó en salmones de vida libre. Es decir, en ambiente no productivo. Dado que en Chile no tenemos salmones de forma endémica y solo en sistemas productivos, utilizar este modelo requeriría modificaciones.
+
+Sin embargo, esta metodología podría ser considerada al evaluar especies nativas que sean hospederas de _C. rogercresseyi_.
+
+### MÉTODO GEOESTADÍSTICO PROPUESTO
+
+El método propuesto consiste en la utilización de Kriging Ordinario, el cual asume que el proceso es _intrínsecamente estacionario_, donde nuestra media es constante y la matriz de varianza-covarianza depende de la distancia.
+
+El Kriging es un método que nació inicialmente en Sudáfrica y en la minería del oro, donde se utilizó para interpolar en sitios desconocidos a través muestreos o localizaciones conocidas, para encontrar los lugares con mayor presencia de oro [@noel_a_c_cressie_applications_1993].
+
+En este caso, se propone la utilización de Kriging Ordinario para evaluar las zonas que consistentemente presentan mayores cargas parasitarias asociadas.
+
+Consideraremos una variable $\{\textbf{Y}(\textbf{s}):\textbf{s}\in D \subset \mathbb{R}^d\}$ o $\{\textbf{Y(s)}\}$ es una colección de variables aleatorias indexadas por $D$, donde cada $\textbf{s}\in D$ es una localización geográfica [@noel_a_c_cressie_applications_1993]. 
+
+Consideraremos, además que $\textbf{Y(s)}$ es un proceso [intrínsecamente estacionario]{.underline}, donde la Varianza es libre de la localización, y depende solamente de la distancia: $Var[\textbf{Y}(\textbf{s + h}) - \textbf{Y(s)}]$ depende solo del vector $\textbf{h}$ [@sujit_sahu_bayesian_2022]. 
+
+Además de la estacionariedad, dentro de los supuestos de este modelo se encuentra la _isotropía_, donde consideramos que la función del semivariograma $\gamma(\boldsymbol h)$ depende solo de la separación del vector solo a través de su largo $\|\boldsymbol h\|$ [@banerjee_hierarchical_2014]
+
+[Variograma:]{.underline} El variograma es una función definida negativa que caracteriza la covarianza entre las localizaciones observadas a través de las diferencias en una distancia $\textbf{h}$, en donde se espera que a medida que $\|\textbf{h}\|$ aumenta, se espera que la diferencia sea mayor el variograma se puede representar como $2\gamma(h)$ y el semivariograma se considera $\gamma(h)$. El cálculo para el variograma empírico se ha definido de distintas maneras, pero las principales son:
+
+- Semivariograma clásico: $\gamma(h) = \frac{1}{2N_h}\sum_{i=1}^{N_h}[Y(x_{i+h}) - Y(x_i)]^2$
+
+- Semivariograma robusto de Cressie:  $\gamma(h) = \frac{\left[\frac{1}{N_h}\sum_{i=1}^{N_h}|Y(x_{i+h}) - Y(x_i)|^\frac{1}{2}\right]^4}{0.914 + \frac{0.988}{N_h}}$
+
+El variograma además, se compone de principalmente tres partes:
+
+- Nugget: Corresponde a la semivarianza del primer desfase de distancia, en la discontinuidad en el origen
+
+- Sill: El límite del variograma cuando $h \rightarrow \infty$ 
+
+- Range: La distancia en la que la diferencia del variograma con respecto al Sill es mínima, y en el caso de los variogramas con Sill asintótica, corresponde al valor en el que la semivarianza alcanza el 95% del Sill.
+
+Además, para una función de variograma válida, existe una función de covarianza definida positiva basada en la distancia que describe la relación entre los puntos observados y su distancia tal que: 
+
+$$
+C(\textbf h) = C(\mathbf 0) - \gamma(\textbf h)
+$$
+
+En donde la función de covarianza entre dos puntos desaparece a medida que la distancia aumenta [@banerjee_hierarchical_2014], siempre cuando el proceso sea ergódico, es decir, $\lim_{\|h\|\rightarrow\infty} C(\boldsymbol h) = 0$ [@banerjee_hierarchical_2014]. 
+
+[Estimación del variograma:]{.underline}
+
+Hay distintos métodos para la estimación del variograma. El más frecuente es la inspección visual del patrón observado, pero [@cressie_fitting_1985] propuso un método numérico robusto a través de la utilización de  mínimos cuadrados ponderados, para estimar el vector de parámetros $\boldsymbol{\hat\lambda}$: 
+
+$$
+\sum_{j=1}^k N_{h(j)} \left[\frac{\bar\gamma(h(j))}{\gamma(h(j)|\boldsymbol {\hat\lambda})} -1 \right]^2
+$$
+
+[Kriging Ordinario:]{.underline} Este método nace originalmente de Matheron (1963) en honor a D.G. Krige, quien dio los primeros pasos para los métodos geoestadísticos actuales [@banerjee_hierarchical_2014]. En este caso, consideramos a $\mathbf{Y} = (Y(s_1),\dots,Y(s_n))^{\top}$, y definimos $Y(s_0)$ como la localización a interpolar.
+
+Bajo este criterio, nuestro mejor predictor lineal (BLUP) basado en nuestros datos observados y considerando una función de pérdida cuadrática correspondería a: $\boldsymbol{\lambda}^{\top}\textbf{Y}$, donde para conseguir nuestros pesos óptimos $\lambda$ resolvemos un problema de optimización con restricción $\sum_{i=1}^n\lambda_i = 1$
+
+$$
+\boldsymbol{\hat \lambda} = \Gamma^{-1}\left(\boldsymbol{\gamma}_0 + \boldsymbol{1}^\top(\mathbf{1}^{\top}\Gamma^{-1}\mathbf{1})^{-1}(1 - \mathbf{1}^{\top}\Gamma^{-1}\boldsymbol{\gamma}_0) \right)
+$$
+
+O al expresarlo utilizando la covarianza: 
+
+$$
+\boldsymbol{\hat\lambda} = \boldsymbol\Sigma^{-1}\left[\mathbf{c}_0 + \boldsymbol{1}(\boldsymbol{1}^{\top}\boldsymbol\Sigma^{-1}\boldsymbol{1})^{-1}(1 - \boldsymbol{1}^{\top}\boldsymbol\Sigma^{-1}\mathbf{c}_0) \right]
+$$
+
+Y la varianza de la predicción: 
+
+$$
+\sigma^2_{ok} = \sigma^2_0 - \mathbf{c}_0^{\top}\boldsymbol\Sigma^{-1}\mathbf{c}_0 + (1 - \mathbf{1}^{\top}\boldsymbol\Sigma^{-1}\mathbf{c}_0)^{\top}(\boldsymbol{1}^\top\boldsymbol\Sigma^{-1}\boldsymbol{1})^{-1}(1 - \boldsymbol{1}^\top \boldsymbol\Sigma^{-1}\mathbf{c}_0)
+$$
+
+Entonces, nuestro predictor lineal para una localización no conocida (o punto a interpolar), corresponde a: 
+
+$$
+p_{ok}(\boldsymbol Z; \boldsymbol{s_0}) = (\boldsymbol 1^\top\boldsymbol\Sigma^{-1}\boldsymbol 1)^{-1}\boldsymbol 1^\top \boldsymbol\Sigma^{-1}\boldsymbol Z(\boldsymbol s) + \boldsymbol \sigma^\top\boldsymbol\Sigma^{-1}(\boldsymbol Z(\boldsymbol s) - \boldsymbol 1(\boldsymbol 1^\top\boldsymbol\Sigma^{-1}\boldsymbol 1)^{-1}\boldsymbol 1^\top \boldsymbol\Sigma^{-1}\boldsymbol Z(\boldsymbol s))
+$$
+
+En donde: 
+
++ $\gamma_0$ es la semivarianza del lugar a interpolar, basada en la distancia de los sitios conocidos al nuevo punto.
+
++ $\mathbf{c}_0$ es la covarianza del lugar a interpolar, basada en la distancia de los sitios conocidos al nuevo punto.
+
+
+[Kriging Ordinario log-normal:]{.underline}
+
+El Kriging Ordinario log-normal considera que $Y(s) = \log\{Z(s)\}$ sigue una distribución normal multivariada [@schabenberger_statistical_2017]. En este caso, asumimos que $Y(\cdot)$ es intrínsecamente estacionario con media $\mu_Y$, en donde el predictor lineal y la varianza corresponden a: 
+
++ $p(\boldsymbol{Z};\boldsymbol{s_0}) = \exp\left(p_{ok}(\boldsymbol Y;s_0) + \frac{\sigma_Y^2}{2} - \frac{\mathrm{Var}(p_{ok}(\boldsymbol Y;s_0))}{2}\right)$. 
+
++ $E\left[(p_{olk}(\boldsymbol Z;\boldsymbol s_0) - Z(\boldsymbol s_0) )^2\right] = \exp(2\mu_Y + \sigma^2_Y)\exp(\sigma^2_Y)\times\{(1 + (\exp\{-\sigma^2_{ok}(\boldsymbol Y;\boldsymbol s_0) + m_Y\})\times(\exp\{m_Y \} - 2)\}$ 
+
+Por lo que para el caso del kriging log-normal, requerimos estimar $\mu_Y$ y $\sigma^2_Y(\cdot)$ [@schabenberger_statistical_2017].
+
+### DISTANCIAS
+
+Los métodos de Kriging Ordinario al ser utilizados con la distancia euclidiana garantizan que la matriz de varianza-covarianza obtenida a través de las distancias entre los puntos conocidos está garantizada de ser definida positiva [@ver_hoef_kriging_2018]. Sin embargo, situaciones como las que ocurren en la Región de Aysén, donde se observan múltiples barreras y canales. Dado esto, se propone la utilización de la distancia de camino más corto (shortest-path), la cual ha sido utilizada en los métodos anteriores.
+
+Esta distancia fue calculada utilizando el paquete gdistance [@van_etten_package_2017], el cual se basa en la utlización de rasters y matrices de transición. Esta matriz de transición utiliza la métrica de conducción para el cálculo de la distancia entre punto A y punto B.
+
+Este cálculo de distancia se realiza utilizando el algoritmo de Dijkstra a través de la matriz de transición, considerando el mar como el terreno navegable a través de la inversión del raster basado en la geometría de la región de aysén.
+
+Para garantizar que la matriz de varianza-covarianza sea definida positiva al utilizar la distancia del camino más corto, consideraremos una corrección llamada 'ClosePD' propuesta por [@davis_development_2019], en donde la matriz de varianza-covarianza obtenida a través de la distancia pasa por un proceso de descomposición en los valores propios: $C([d_{ij}]) = V\Lambda V^\top$.
+
+Se considerará un umbral $\epsilon$, tal que $\epsilon=\frac{\lambda_1}{\tau}$, $\lambda_1 < \lambda_2< \dots<\lambda_k$ donde $\tau$ es un valor de tolerancia predeterminado, en caso de ser necesaria la corrección.
+
+El umbral se evalúa en cada $\lambda_i$:
+
+$$
+\tilde\Lambda_i=\begin{cases}
+\lambda_i, \   \lambda_i \geq \epsilon \\
+\epsilon, \ \  \lambda_i < \epsilon
+\end{cases}
+$$
+
+A través de esto, se consigue una nueva matriz de covarianza basada en los valores propios corregidos, que se utiliza para reescalar la matriz de varianza-covarianza: $\boldsymbol{\tilde{C}}([d_{ij}]) = V\tilde{\Lambda}V^\top$, donde $\tilde{\Lambda}=diag(\tilde{\Lambda}_1,\dots,\tilde{\Lambda}_n)$ corresponde a los valores propios de la matriz corregida co el método 'ClosePD'.
+

@@ -1,0 +1,57 @@
+project:
+  type: book
+  execute-dir: project
+  output-dir: 3_outputs
+  
+
+execute: 
+  echo: false
+  warning: false
+  error: false
+  
+book:
+  title: "Caracterización de las cargas parasitarias de _C. rogercresseyi_ en la región de Aysén a través de Kriging Ordinario y distancia euclidiana y camino más corto"
+  author: 
+  - name: "Francisco Vargas"
+  - name: "Tutor: Jonathan Acosta"
+  date: "3/13/2024"
+  output-file: "FVargas_thesis"
+  chapters:
+    - index.qmd
+    - 2_scripts/0_summary.qmd
+    - part: 2_scripts/1_intro_and_methodology.qmd
+      chapters: 
+        - 2_scripts/1_1_objectives.qmd
+        - 2_scripts/1_2_theoretical_background.qmd
+        - 2_scripts/1_3_materials_and_methods.qmd
+    - part: 2_scripts/2_results.qmd
+      chapters: 
+        - 2_scripts/2_1_descriptive_stats.qmd
+        - 2_scripts/2_2_kriging.qmd
+    - 2_scripts/references.qmd
+
+bibliography: 2_scripts/Thesis_FVargas.bib
+csl: american-medical-association-brackets.csl
+
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+    lang: es
+    documentclass: scrreprt
+    pdf-engine: pdflatex
+    include-in-header:
+    - text: |
+              \usepackage{amsmath, amsfonts, amssymb}
+              \usepackage{dsfont, bm, float}
+
+header-includes:
+  - \usepackage{titling}
+  - \pretitle{\begin{center}\LARGE }
+  - \posttitle{\\
+      \includegraphics[width=2in, height=2in]{Images/LogoUC.pdf}\LARGE\\
+      \end{center}}
+
+
+

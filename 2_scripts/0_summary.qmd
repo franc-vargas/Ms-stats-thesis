@@ -1,0 +1,21 @@
+# RESUMEN {.unnumbered}
+
+El _Caligus rogercresseyi_ es el ectoparásito que afecta más frecuentemente a la salmonicultura chilena. Se caracteriza por presentarse en el ambiente marino, en general en ambientes con salinidad sobre 26 ppm; presenta un ciclo con dos fases: una fase planktónica y una fase parásita, en donde el copepodito es el estadío infestante. Este parásito causa tanto pérdidas directas como indirectas, dado a los costos de tratamiento, pérdida de la conversión de alimento y pérdida de calidad en la planta de proceso, entre otras cosas. 
+
+El Servicio Nacional de Pesca y Acuicultura monitorea semanalmente los centros de cultivo activos a través del Programa Sanitario Específico de Vigilancia y Control de Caligus (PSEVC-Caligus), el cual establece que los centros deben realizar muestreos de caligus semanales (o mensuales, según período/especie/zona) y enviar estos muestreos al Servicio. SERNAPESCA además establece que los centros con promedio de hembras ovígeras mayores a 3 posterior a una ventana de tratamiento caen en categoría de Centro de Alta Diseminación (CAD), donde la normativa permite hacer una cosecha parcial de hasta el 50% de la biomasa si el centro es considerado CAD tres veces seguidas o del 25% si el centro es considerado CAD 3 veces en 6 evaluaciones.
+
+La data utilizada corresponde al monitoreo de los centros de cultivo a través del programa de vigilancia de Caligidosis entre los años 2015 y 2022, y las distancias utilizadas fue una comparación entre el camino más corto (shortest path) y la distancia euclidiana, aplicando distintos modelos de Semivariograma: Matérn, Gaussiano, Esférico y Cauchy al promedio de los máximos por ciclos para 158 centros de cultivo. Las predicciones fueron realizadas a través de la interpolación considerando Kriging Lognormal, dada la distribución asimétrica de los máximos.
+
+Las diferencias observadas se encuentran principalmente en la varianza entre las distancias, donde los modelos utilizando la distancia euclidiana presentó consistentemente mayor varianza que los modelos estimados utilizando la distancia shortest path.
+
+\newpage
+
+# SUMMARY {.unnumbered}
+
+_Caligus rogercresseyi_ is the ectoparasite that most often affects the chilean salmon farming. It's characterized by its presence in marine environments at over 26 ppm of salinity; it has a cycle with two main phases: a planktonic phase and a parasitic phase, where the infesting stage is the copepodid. This parasite causes both direct and indirect losses, due to increased treatment costs, loss of feed conversion and loss of quality at the processing plant, among other factors.
+
+The National Aquaculture and Fisheries Service (SERNAPESCA) monitors _C. rogercresseyi_ loads weekly through its Specific Vigilance and Control Sanitary Programme for Caligus (PSEVC - Caligus), which stablishes that sites must do weekly parasite samplings (or monthly, in some specific time periods/species/regions) and they must send those samplings to the National Service. SERNAPESCA also establishes that any site with over three average ovigerous females on the site after a treatment window fall under the category of High Disemination Site (CAD), where the law allows the government to demand a up to 50% of biomass harvesting if the site was CAD 3 times in a row, or 25% if the site fell into the CAD category 3 times out of 6 evaluations
+
+The data used was gathered from the overall monitoring of sites on the Specific Vigilance and Control Sanitary Programme for Caligus during the years 2015 and 2022. The distances correspond to a comparison between the shortest-path distance, and euclidian distance, using different Semivariogram models: Matérn, Gaussian, Spherical and Cauchy on the average of the maximums per site, on 158 sites in total. Predictions were donde using interpolation via Lognormal Kriging, due to the asymmetric distribution of the maxima.
+
+The main differences were between the variances of each distance, where models using euclidian distance consistenly shoed a higher variance than the models estimated using the shortest-path.

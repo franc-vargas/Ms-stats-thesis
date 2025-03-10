@@ -1,0 +1,937 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Kriging Ordinario
+
+```{r}
+library(tidyverse)
+library(sf)
+library(sp)
+library(patchwork)
+library(rlang)
+ggplot2::theme_set(theme_bw())
+source("2_scripts/1_ImprovedSemivariogram.R")
+source("2_scripts/Custom Functions/Custom Kriging.R")
+source("2_scripts/Custom Functions/WLS_Variogram_Fit_Expanded.R")
+
+options(knitr.kable.NA = '-')
+custom_themes <- 
+  theme(plot.title = element_text(size = 10, hjust = 0.5),
+        legend.title = element_text(size = 8),
+        axis.text = element_text(size = 7),
+        #axis.text.y = element_text(0.5),
+        legend.key.size = unit(0.5, 'cm'),
+        axis.title = element_text(size = 8),
+        text = element_text(size = 8))
+
+
+```
+
+```{r}
+#| label: datos
+
+mapa_base <- chilemapas::generar_regiones() |> dplyr::filter(codigo_region == 11)
+
+predicted_points <- readr::read_rds(here::here("1_data/Kriging_points_Extra.rds"))
+
+max.summary <- readr::read_rds(here::here("1_data/max_summary_AysenLagos.rds"))
+aysen.summary <- max.summary |> filter(nombre_region == "XI REGION")
+aysen.summary$re_scaled_total_adults <- aysen.summary$max.adultos_totales / 40 
+aysen.summary$log.scaled_total_adults <- aysen.summary$re_scaled_total_adults
+aysen.summary$log.scaled_total_adults[aysen.summary$log.scaled_total_adults == 0] <- 0.001
+aysen.summary$log.scaled_total_adults <- log(aysen.summary$log.scaled_total_adults)
+aysen_coords <- 
+  aysen.summary |>
+  dplyr::select(lon, lat, codigo)
+
+```
+
+```{r}
+#|label: shortest-path-distance-matrix
+
+aysen.distance <- readr::read_rds(here::here("1_data/Aysen_DistanceMatrix.rds"))
+aysen.distance <- aysen.distance/1000
+ids <- unique(aysen.summary$codigo)
+aysen.dist.subset <- aysen.distance[rownames(aysen.distance)%in% ids, 
+                                    colnames(aysen.distance) %in% ids]
+aysen.dist.subset <- aysen.dist.subset[order(match(rownames(aysen.dist.subset),
+                                                   ids)), 
+                                       order(match(colnames(aysen.dist.subset), ids))]
+
+S0 <- readr::read_rds(here::here("1_data/kriging_distance_S0_Fixed.rds"))
+
+S0_Non_Euc <- S0[order(match(rownames(S0),
+                             ids)),]/1000
+
+```
+
+```{r}
+#| label: euclidian-distance-matrix
+
+origin <- st_as_sf(aysen_coords[,c(1:2)], coords = c("lon", "lat"),
+                   crs = st_crs("WGS84"))
+dest <- st_as_sf(aysen_coords[,c(1:2)], coords = c("lon", "lat"),
+                 crs = st_crs("WGS84"))
+distances <- st_distance(origin, dest, by_element = F )
+
+
+distances <- units::set_units(distances, "km")
+distances <- as.dist(distances) |> as.matrix()
+rownames(distances) <- aysen_coords$codigo
+colnames(distances) <- aysen_coords$codigo
+
+predicted_points_euc <- coordinates(predicted_points)
+colnames(predicted_points_euc) <- c("lon", "lat")
+predicted_points_euc <- data.frame(predicted_points_euc)
+
+dest_s0 <- st_as_sf(predicted_points_euc, coords = c("lon", "lat"),
+                    crs = st_crs("WGS84"))
+distances_krig_euc <- st_distance(origin, dest_s0, by_element = F )
+distances_krig_euc <-units::set_units(distances_krig_euc, "km")
+distances_krig_euc <- matrix(distances_krig_euc, ncol = dim(distances_krig_euc)[2])
+rownames(distances_krig_euc) <- aysen_coords$codigo
+```
+
+
+## Máximos
+
+Se generó un promedio de los máximos por ciclo, por centro de salmones con el fin de realizar un resumen que no contuviera autocorrelación temporal. Los ciclos en cada centro pueden ser considerados como independientes, debido a que después de cada ciclo se cierra la ACS y con eso, todos los centros circundantes.
+
+Para este caso, nuestra nueva variable distribuye de la siguiente manera:
+
+```{r}
+histmax <- 
+  ggplot(aysen.summary) + 
+  geom_histogram(aes(x = max.adultos_totales/40), 
+                 bins = 70,
+                 fill = "darkgreen", 
+                 alpha = 0.7) + 
+  labs(x = "P. máximos de Adultos Totales", y = "Frecuencia",
+        caption = "(b) Distribución") 
+
+colores <- c("darkblue", "yellow" , "red")
+
+carga_centros_general <-
+  ggplot(mapa_base) + 
+  geom_sf() + 
+   geom_point(
+             fill = "black",
+             data = aysen.summary,
+             alpha = 0.7,size = 1.5,
+             aes(x =  lon,
+                 y = lat, colour = re_scaled_total_adults)) + 
+  labs(x = "longitud", 
+       y = "latitud", 
+       colour = "P. Adultos totales",
+       caption = "(a) Distribución geográfica") + 
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  custom_themes+
+  theme(legend.position = "top")
+
+```
+
+```{r}
+#| label: plots-maximum
+#| fig-cap: "Promedio de máximos por ciclo"
+#| fig-width: 6
+#| fig-height: 4
+#| fig-align: center
+#| fig-cap-location: top
+
+
+carga_centros_general + histmax + plot_layout(ncol = 2, widths = c(1,1))
+
+```
+
+```{r}
+#| echo: false
+#| output: false
+variograms <- c("matern", "gaussian", "spherical", "cauchy")
+names(variograms) <- variograms
+
+vg_shortest_path <- cs.variog("log.scaled_total_adults",
+                              "codigo",
+                              aysen.distance, 
+                              aysen.summary,
+                              breaks = 25, 
+                              max.dist = 60,
+                              plot = F)
+
+vg_euclidian <- cs.variog("log.scaled_total_adults", 
+                          "codigo",
+                          distances, 
+                          aysen.summary, 
+                          breaks = 25,
+                          max.dist = 60,
+                          plot = F)
+shortest_path <- lapply(variograms,
+                        function(x){
+                          fit_WLS_variogram(
+                            vg_shortest_path,
+                            cov.model = x,
+                            robust = T
+                          )
+                          }
+                        )
+
+euclidian <- lapply(variograms, 
+                    function(x){
+                      fit_WLS_variogram(
+                        vg_euclidian,
+                        cov.model = x,
+                        robust = T
+                        )
+                      }
+                    )
+
+```
+
+
+
+```{r}
+
+external_theme <- theme(plot.title = element_text(hjust = 0.5))
+max_dist <- 60
+sv_shortest_path <- 
+  ggplot(vg_shortest_path$plot.data) +
+  geom_point(aes(x = lag, y = robust)) +
+  # geom_text(aes(x =lag, y = robust, label = n),
+  #           nudge_y = -0.06)+
+  labs(x = "Distancia (km)", y = "Semivarianza (modulus)",
+       subtitle = "Shortest-Path"
+       ) + 
+   geom_function(fun = variogram, 
+                args = list(nugget=shortest_path[["matern"]]$par[["nugget"]],
+                            sigma2=shortest_path[["matern"]]$par[["sigma"]], 
+                            phi=shortest_path[["matern"]]$par[["phi"]], 
+                            covmodel = "matern", 
+                            kappa = shortest_path[["matern"]]$par[["kappa"]]),
+                aes(colour = "matern"),alpha = 0.7,
+                xlim = c(0,max_dist)) + 
+  geom_function(fun = variogram, 
+                args = list(nugget=shortest_path[["gaussian"]]$par[["nugget"]],
+                            sigma2=shortest_path[["gaussian"]]$par[["sigma"]], 
+                            phi=shortest_path[["gaussian"]]$par[["phi"]], 
+                            covmodel = "gaussian"),alpha = 0.7,
+                aes(colour = "gaussian"),
+                xlim = c(0,max_dist)) + 
+  geom_function(fun = variogram,
+                args = list(nugget=shortest_path[["cauchy"]]$par[["nugget"]],
+                            sigma2=shortest_path[["cauchy"]]$par[["sigma"]],
+                            phi=shortest_path[["cauchy"]]$par[["phi"]],
+                            covmodel = "cauchy",
+                            kappa = shortest_path[["cauchy"]]$par[["kappa"]]
+                            ),
+                aes(colour = "cauchy"),
+                xlim = c(0,max_dist)) +
+  geom_function(fun = variogram, 
+                args = list(nugget=shortest_path[["spherical"]]$par[["nugget"]],
+                            sigma2=shortest_path[["spherical"]]$par[["sigma"]], 
+                            phi=shortest_path[["spherical"]]$par[["phi"]], 
+                            covmodel = "spherical"),alpha = 0.7,
+                aes(colour = "spherical"),
+                xlim = c(0,max_dist)) + 
+  external_theme + labs(colour = "Semivariograma") + 
+  theme(legend.position = "bottom")
+sv_euclidian <- 
+  ggplot(vg_euclidian$plot.data) +
+  geom_point(aes(x = lag, y = robust)) + 
+  # geom_text(aes(x =lag, y = robust, label = n),
+  #           nudge_y =  -0.06)+
+   geom_function(fun = variogram, 
+                args = list(nugget= euclidian[["matern"]]$par[["nugget"]], 
+                            sigma2=euclidian[["matern"]]$par[["sigma"]],
+                            phi=euclidian[["matern"]]$par[["phi"]],
+                            covmodel = "matern",
+                            kappa = euclidian[["matern"]]$par[["kappa"]]),
+                aes(colour = "matern"),alpha = 0.7,
+                xlim = c(0,max_dist)) + 
+  geom_function(fun = variogram, 
+                args = list(nugget= euclidian[["gaussian"]]$par[["nugget"]], 
+                            sigma2=euclidian[["gaussian"]]$par[["sigma"]] ,
+                            phi=euclidian[["gaussian"]]$par[["phi"]],
+                            covmodel = "gaussian"
+                            ),
+                aes(colour = "gaussian"), alpha = 0.7,
+                xlim = c(0,max_dist)) + 
+  geom_function(fun = variogram,
+                args = list(nugget= euclidian[["cauchy"]]$par[["nugget"]],
+                            sigma2=euclidian[["cauchy"]]$par[["sigma"]],
+                            phi=euclidian[["cauchy"]]$par[["phi"]],
+                            covmodel = "cauchy",
+                            kappa = euclidian[["cauchy"]]$par[["kappa"]]),
+                aes(colour = "cauchy"),
+                xlim = c(0,max_dist)) +
+  geom_function(fun = variogram, 
+                args = list(nugget= euclidian[["spherical"]]$par[["nugget"]], 
+                            sigma2=euclidian[["spherical"]]$par[["sigma"]],
+                            phi=euclidian[["spherical"]]$par[["phi"]],
+                            covmodel = "spherical"
+                            ),
+                aes(colour = "spherical"), alpha = 0.7,
+                xlim = c(0,max_dist)) + 
+  labs(x = "Distancia (km)", y = "Semivarianza (modulus)",  
+       subtitle = "Euclidiano" ) + 
+  external_theme+ 
+  theme(legend.position = "")
+```
+
+## Variogramas
+
+Dada la distribución asimétrica, con valores sobre 150 adultos promedio, se utilizó el semivariograma robusto de cressie del logaritmo de los adultos totales. Se consideró la distancia máxima como 60 km para ambas distancias.
+
+A pesar de utilizar el estimador robusto del semivariograma, se observa que la distancia euclidiana tiende a tener mayor varianza en distnacias más cortas (<10 km).
+
+El modelo Matérn en utilizando distancia euclidiana presenta baja suavidad, asociado a un parámetro de suavidad bajo, por lo que se obsera un quiebre cuando este se acerca al 0.
+
+```{r}
+#| label: semivariogramas-robustos-maximos
+#| fig-cap: "Semivariogramas robustos para distancia shortest-path y euclidiana"
+#| fig-width: 6
+#| fig-height: 5
+
+sv_shortest_path / sv_euclidian
+
+```
+
+\newpage
+
+Todos los modelos de semivariograma llegan a valores similares del parámetro $\sigma^2$ y comparten un nugget de 0. Se observan distintos valores de phi en cada modelo. Al utilizar la distancia euclidiana, los modelos comparten un nugget estimado de 0, y en general valores similares para $\sigma^2$, exceptuando el modelo Matérn, que presenta un comportamiento distinto a todos los otros semivariogramas, principalmente asociado a las estimaciones de $\phi$ y $\kappa$.
+
+```{r}
+params_shortest <- do.call(bind_rows,lapply(shortest_path, function(x) x$par))
+params_euclidian <- do.call(bind_rows,lapply(euclidian, function(x) x$par))
+params_shortest <- 
+  params_shortest |> 
+  mutate(model = variograms, .before = nugget)
+
+params_euclidian <- 
+  params_euclidian |> 
+  mutate(model = variograms, .before = nugget)
+
+```
+
+```{r}
+#| results: asis
+#| tbl-cap: "Parámetros estimados de los distintos semivariogramas para la distancia Shortest-path y Euclidiana"
+
+rbind(params_shortest, params_euclidian) |> 
+  mutate(model = str_to_title(model)) |> 
+  knitr::kable(col.names = c("Modelo", "Nugget", "$\\sigma^2$", "$\\kappa$",
+                             "$\\phi$"), 
+               escape =F,
+              align = "lcccc",
+              digits = 3,   
+              format = "latex") |> 
+  kableExtra::pack_rows(group_label = "Shortest-path", start_row = 1, end_row = 4) |> 
+  kableExtra::pack_rows(group_label = "Euclidiana", start_row = 5, end_row = 8) |> 
+  kableExtra::row_spec(0, bold = TRUE) |> 
+  kableExtra::kable_styling(latex_options = "HOLD_position")
+
+```
+
+
+```{r}
+#| label: covariance-matrix
+covariance_shortest <- 
+  lapply(
+    shortest_path,
+    function(x){
+      model <- x$model
+      params <- x$par
+      names(params) <- str_replace(names(params), "sigma", "sigma2")
+      if("kappa" %in% names(params)){
+        Sigma <-  geoR::cov.spatial(aysen.dist.subset,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    params[["sigma2"]],
+                                    params[["phi"]]),
+                                  kappa = params[["kappa"]]) +
+        params[["nugget"]]*diag(nrow(aysen.summary))
+        
+        c0 <-  geoR::cov.spatial(S0_Non_Euc,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    params[["sigma2"]],
+                                    params[["phi"]]),
+                                  kappa = params[["kappa"]]) 
+          c0[S0_Non_Euc == 0] <-  params[["nugget"]] + params[["sigma2"]]
+
+      }else{
+           Sigma <-  geoR::cov.spatial(aysen.dist.subset,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    params[["sigma2"]],
+                                    params[["phi"]])) +
+        params[["nugget"]]*diag(nrow(aysen.summary))
+           
+             c0 <-  geoR::cov.spatial(S0_Non_Euc,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    params[["sigma2"]],
+                                    params[["phi"]]))
+             c0[S0_Non_Euc == 0] <-  params[["nugget"]] + params[["sigma2"]]
+        
+      }
+      x$Sigma <- Sigma
+      x$c0 <- c0
+      x
+      
+})
+
+covariance_euclidian <- 
+  lapply(
+    euclidian,
+    function(x){
+      model <- x$model
+      params <- x$par
+      names(params) <- str_replace(names(params), "sigma", "sigma2")
+      if("kappa" %in% names(params)){
+        Sigma <-  geoR::cov.spatial(distances,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    sigma = params[["sigma2"]],
+                                    phi = params[["phi"]]),
+                                  kappa = params[["kappa"]]) +
+        params[["nugget"]]*diag(nrow(aysen.summary))
+        
+         c0 <-  geoR::cov.spatial(distances_krig_euc,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    params[["sigma2"]],
+                                    params[["phi"]]),
+                                  kappa = params[["kappa"]]) 
+          c0[distances_krig_euc == 0] <-  params[["nugget"]] + params[["sigma2"]]
+        
+      }else{
+           Sigma <-  geoR::cov.spatial(distances,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    sigma = params[["sigma2"]],
+                                    phi = params[["phi"]])) +
+        params[["nugget"]]*diag(nrow(aysen.summary))
+           
+         c0 <-  geoR::cov.spatial(distances_krig_euc,
+                                  cov.model=model,
+                                  cov.pars=c(
+                                    params[["sigma2"]],
+                                    params[["phi"]])
+                                  )
+         
+          c0[distances_krig_euc == 0] <-  params[["nugget"]] + params[["sigma2"]]
+        
+      }
+      x$Sigma <- Sigma
+      x$c0 <- c0
+      x
+})
+
+eigen_shortest <- lapply(covariance_shortest, function(x) eigen(x$Sigma))
+eigen_euclidian <- lapply(covariance_euclidian, function(x) eigen(x$Sigma))
+
+
+min_eigen_shortest <- lapply(eigen_shortest, function(x) min(x$values))
+min_eigen_euclidian <- lapply(eigen_euclidian, function(x) min(x$values))
+min_eigen <- cbind(do.call(bind_rows, min_eigen_shortest)|> t(),
+      do.call(bind_rows, min_eigen_euclidian) |> t())
+
+colnames(min_eigen) <- c("shortest_path", "euclidian")
+
+```
+
+
+```{r}
+range_comparison <- 
+  lapply(variograms, function(x){
+  practical_shortest <- 
+    covariance_shortest[[x]]$par[["sigma"]] - 
+    covariance_shortest[[x]]$par[["nugget"]]
+  
+  practical_euclidian <-
+    covariance_euclidian[[x]]$par[["sigma"]] - 
+    covariance_euclidian[[x]]$par[["nugget"]] 
+  
+  range_comparison <- data.frame(shortest = practical_shortest, 
+                        euclidian = practical_euclidian)
+  range_comparison
+  })
+
+range_comparison <- do.call(rbind, range_comparison) |> 
+  rownames_to_column(var = "variogram") |> 
+  mutate(variogram = str_to_title(variogram))
+```
+
+Se evaluó el rango práctico para cada uno de los modelos de variograma, para la distancia Euclidiana todos los modelos presentaron un rango práctico mayor que la distancia shortest-path. Además, el semivariograma Matérn Euclidiano fue el que presentó el mayor rango práctico de todos los semivariogramas estimados. 
+
+Todos los modelos de variogramas ajustados en la distancia shortest-path presentaron rangos prácticos similares para el $\boldsymbol{Y}(\boldsymbol{s}) = \log \boldsymbol {Z}(\boldsymbol{s})$, mientras que en los semivariogramas estimados por la distancia euclidiana, tanto el semivariograma Cauchy como el Matérn presentaron diferencias en comparación con el Gaussiano y Esférico.
+
+```{r}
+#| label: practical-range-comparison
+#| tbl-cap: "Comparación de rangos prácticos para los distintos modelos de semivariograma, y para cada métrica de distancia"
+#| fig-align: center
+
+
+range_comparison |> 
+  knitr::kable(col.names = c("Variograma", "Shortest-Path", "Euclidian"),
+               format = "latex") |> 
+  kableExtra::kable_styling(latex_options = "HOLD_position")
+```
+
+Los valores propios de cada una de las matrices $\boldsymbol \Sigma$ generadas por cada métrica de distancia fueron evaluados para corroborar que las matrices fuesen definidas positivas.
+
+Dado que tanto para la distancia euclidiana como para el camino más corto y para todos los modelos de variograma los valores propios $\lambda_1, \dots, \lambda_n > 0$, no fue necesario realizar la corrección ClosePD indicada en el [Marco teórico @sec-theoretical-background].
+
+```{r}
+#| results: asis
+#| tbl-cap: "Mínimo de los valores propios de $\\boldsymbol{\\Sigma}$ para cada modelo y tipo de distancia estimadas"
+#| fig-align: center
+min_eigen |> 
+  as.data.frame() |>
+  mutate(model = str_to_title(row.names(min_eigen)),
+         .before = shortest_path) |> 
+  knitr::kable(format = "latex", 
+               col.names = c("Modelo",  "Shortest-path","Euclidian"),
+               row.names = F,
+               escape = F)
+```
+
+
+```{r}
+#| label: kriging-lognormal
+#| eval: true
+#| output: false
+
+covariance_shortest <- 
+  lapply(covariance_shortest, 
+         function(x){
+           params <- c(sigma2 = x$par[["sigma"]], 
+                       phi = x$par[["phi"]],
+                      nugget = x$par[["nugget"]])
+         
+           kriging <- krig.manual(data = aysen.summary$log.scaled_total_adults,
+                                  Sigma = x$Sigma,
+                                  param = params,
+                                  cov.model = x$model,
+                                  c0 = x$c0,
+                                  type = "lognormal")
+           x$pred <- kriging$pred
+           x$var.pred <- kriging$var.pred
+           x
+           }
+  )
+
+
+covariance_euclidian <- 
+  lapply(covariance_euclidian, 
+         function(x){
+           params <- c(sigma2 = x$par[["sigma"]], 
+                       phi = x$par[["phi"]],
+                       nugget = x$par[["nugget"]])
+         
+           kriging <- krig.manual(data = aysen.summary$log.scaled_total_adults,
+                                  Sigma = x$Sigma,
+                                  param = params,
+                                  cov.model = x$model,
+                                  c0 = x$c0,
+                                  type = "lognormal")
+           x$pred <- kriging$pred
+           x$var.pred <- kriging$var.pred
+           x
+           }
+  )
+
+
+kriging_map <- function(variogram = "matern", max.fill = 2500,
+                        kriging_points, var = F, shortest = T, 
+                        plot_legend = T, diff = F){
+  
+  if(shortest == T){ 
+    plot_title <- "Shortest Path Distance,"
+  }else{
+      plot_title <- "Euclidian Distance,"
+  }
+  plot_title <- paste(plot_title, str_to_title(variogram), sep = " ")
+  if(var == T){
+    plot_title <- paste(plot_title, "Kriging variance", sep = " - ")
+    lab_title <- "Variance"
+    
+  }else{
+    plot_title <- paste(plot_title, "Kriging prediction", sep = " - ")
+    lab_title <- "Kriging"
+    
+  }
+  
+  if(diff == T){
+    if(var == F){
+      plot_title <- "Kriging Abs. Difference"
+      lab_title <- "Abs. Difference"
+    }else{
+        plot_title <- "Kriging Variance Ratio - Shortest/Euclidian"
+        lab_title <- "Variance Ratio"
+
+    }
+    
+  }
+   
+   
+  plot <- 
+    ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+            aes(x = predicted_points@coords[,1] , 
+                y = predicted_points@coords[,2], 
+                fill = kriging_points),
+            alpha = 0.65, interpolate = T,
+            show.legend =T)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = re_scaled_total_adults),
+             show.legend =F )+
+  geom_point(shape = 1,size = 1,
+             colour = "black",
+             data = aysen.summary,
+             alpha = 0.7,
+             aes(x =  lon,
+                 y = lat))+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                       limits = c(0, max.fill))+
+  scale_colour_gradientn(colors = colores,
+                         limits = c(0, max(aysen.summary$re_scaled_total_adults)))+
+  theme_bw()+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = lab_title,
+       colour = "Adultos Centro",
+       title = plot_title)+
+    custom_themes
+  if(plot_legend == T){
+    plot + theme(legend.position = "bottom",
+                 legend.box = "vertical")
+  }else{
+     plot + theme(legend.position = "none")
+  }
+  
+}
+krig_mapList <- vector(mode = "list")
+
+kriging_map(variogram = "gaussian", max.fill = max(covariance_euclidian[["gaussian"]]$var.pred),
+              kriging_points = covariance_euclidian[["gaussian"]]$var.pred, 
+              shortest = F,
+              var = T,
+            plot_legend = T)
+theme()
+for(i in variograms){
+max_pred <- max(covariance_euclidian[[i]]$pred, 
+                 covariance_shortest[[i]]$pred)
+max_var <- round(max(covariance_euclidian[[i]]$var.pred, 
+                 covariance_shortest[[i]]$var.pred),0)+150
+max_diff <- max(abs(covariance_euclidian[[i]]$pred - 
+                 covariance_shortest[[i]]$pred))
+
+max_var.ratio <- max(covariance_shortest[[i]]$var.pred/
+                       covariance_euclidian[[i]]$var.pred)
+
+euclidian_pred <- 
+  kriging_map(variogram = i, max.fill = max_pred,
+              kriging_points = covariance_euclidian[[i]]$pred, 
+              shortest = F,
+              var = F,
+              plot_legend = F)
+
+shortest_pred <- 
+  kriging_map(variogram = i, max.fill = max_pred,
+              kriging_points = covariance_shortest[[i]]$pred, 
+              shortest = T,
+              var = F,
+              plot_legend = T)
+
+
+euclidian_var <- 
+  kriging_map(variogram = i, max.fill = max_var,
+              kriging_points = covariance_euclidian[[i]]$var.pred, 
+              shortest = F,
+              var = T,
+              plot_legend = F)
+
+shortest_var <- 
+  kriging_map(variogram = i,
+              max.fill = max_var,
+              kriging_points = covariance_shortest[[i]]$var.pred, 
+              shortest = T,
+              var = T,
+              plot_legend = T)
+
+diff_pred <-  kriging_map(variogram = i, max.fill = max_diff,
+              kriging_points = abs(covariance_shortest[[i]]$pred - covariance_euclidian[[i]]$pred), 
+              shortest = T,
+              var = F,
+              plot_legend = T,
+              diff = T)
+
+ratio_var <-  kriging_map(variogram = i, max.fill = max_var.ratio,
+              kriging_points = covariance_shortest[[i]]$var.pred/covariance_euclidian[[i]]$var.pred, 
+              shortest = T,
+              var = T,
+              plot_legend = T,
+              diff = T)
+
+krig_mapList[[i]]$pred <- shortest_pred + euclidian_pred
+krig_mapList[[i]]$var.pred <- shortest_var + euclidian_var
+krig_mapList[[i]]$diff.kriging <- diff_pred + ratio_var 
+}
+```
+
+
+## Interpolación via Kriging
+
+A continuación se presentarán las diferencias entre la predicción interpolada via Kriging Lognormal, y la razón de varianzas de la interpolación. Los mapas de predicción se encuentran en [@sec-appendix].
+
+La razón de varianza o ratio de varianza considerado fue: 
+
+$$
+\frac{\mathrm{var}(\mathrm{Shortest\ path})}{\mathrm{var}(\mathrm{Euclidian})}
+$$
+De esta forma, un ratio de 1 corresponde a que ambas varianzas son iguales, mientras que ratios menores a uno indican que la varianza de la distancia euclidiana es mayor a la de la distancia shortest-path.
+
+Además, para la comparación a nivel de predicción se consideró $|\mathrm{Krig}_{sp}-\mathrm{Krig}_{euc}|$ como métrica de comparación, dado que lo que es de interés es evaluar la diferencia entre predicciones, sin importar si es negativa o positiva.
+
+\newpage
+
+
+[Modelo Matérn:]{.underline}
+
+El semivariograma Matérn presentó sus mayores diferencias a nivel de predicción a nivel de distancias intermedias, principalmente debido a la diferencia en el valor de $\phi$ estimado para la distancia euclidiana, que indica una dependencia a mayor distancia.
+
+A nivel de varianza, considerando se observa que está centrada en 0.85, donde las mayores diferencias se encuentran en las áreas cercanas a los centros. Se observó que en la interpolación alrededor de los centros cercanos la varianza de la distancia shortest-path es 0.6 veces la varianza de la distancia euclidiana.
+
+```{r}
+#| label: matern-kriging
+#| fig-height: 6
+#| fig-width: 6
+#| fig-cap: Diferencias en la interpolación del modelo Matérn shortest-path y euclidiano, a nivel de Kriging y Varianza de predicción.
+krig_mapList$matern$diff.kriging
+
+```
+
+\newpage
+
+[Modelo Gaussiano:]{.underline}
+
+El modelo Gaussiano presentó diferencias, principalmente asociadas a distancias cortas en los centros con mayor carga. También se observaron diferencias en las zonas bajo latitud 46 y longitud 74 - 73.5, debido a que la distancia euclidiana no considera las barreras en la interpolación.
+
+La varianza estimada se encuentra centrada en 1 en los puntos donde no hay centros observados, mientras que en los puntos que se tiene información, se observa que la varianza de la distancia euclidiana es mayor que la distancia shortest-path. 
+
+```{r}
+#| label: gaussian-kriging
+#| fig-height: 6
+#| fig-width: 6
+#| fig-cap: Diferencias en la interpolación del modelo Gaussiano shortest-path y euclidiano, a nivel de Kriging y Varianza de predicción.
+krig_mapList$gaussian$diff.kriging
+
+```
+
+\newpage
+
+[Modelo Esférico:]{.underline}
+
+En el modelo esférico, se observan mayores diferencias en los centros con mayor carga, y donde se encuentrasn más barreras o canales, observando diferencias de aproximadamente 10 adultos totales entre las distintas métricas de distancia. 
+
+A nivel de varianza, la varianza de la distancia shortest path es 0.8 veces la varianza de la distancia euclidiana en la interpolación general, mientras que en las localizaciones con más información el ratio de varianzas tiende valores menores a 0.4, indicando que la distancia euclidiana presenta menor certeza en la predicción.
+
+```{r}
+#| label: spherical-kriging
+#| fig-height: 6
+#| fig-width: 6
+#| fig-cap: Diferencias en la interpolación del modelo Esférico shortest-path y euclidiano, a nivel de Kriging y Varianza de predicción.
+
+krig_mapList$spherical$diff.kriging
+
+```
+
+\newpage
+
+[Modelo Cauchy:]{.underline}
+
+El modelo Cauchy presenta diferencias similares a los modelos anteriores, en general centrados a nivel de 10 adultos totales exceptuando en los centros con mayor carga. Las zonas en las que hay más diferencias a nivel de predicción son concordantes con lo observado en los modelos Gaussiano y Esférico.
+
+A nivel de Varianza, también se observa un ratio en general centrado en 0.8, principalmente dado por el Sill estimado por cada uno de los modelos. En distancias cortas, la varianza del modelo euclidiano continúa siendo mayor que la distancia del camino más corto.
+
+```{r}
+#| label: cauchy-kriging
+#| fig-height: 6
+#| fig-width: 6
+#| fig-cap: Diferencias en la interpolación del modelo Cauchy shortest-path y euclidiano, a nivel de Kriging y Varianza de predicción.
+
+krig_mapList$cauchy$diff.kriging
+
+```
+
+\newpage
+
+# Conclusiones
+
+La distancia del camino más corto o shortest-path representó de mejor manera la dependencia espacial que presentaron los centros de cultivo, en particular debido a la reducción de la varianza a nivel del semivariograma empírico y a los Sill teóricos estimados, en comparación con la distancia euclidiana.
+
+Con respecto a las predicciones a nivel de Kriging entre las distintas métricas de distancia, se observó de forma consistente que independientemente del modelo de semivariograma, la distancia shortest-path presentó menor varianza en los sitios no observados, lo que indica una menor incertidumbre en la predicción.
+
+A nivel de riesgos, ambas distancias permitieron caracterizar las áreas que presentaron una mayor carga parasitaria en general, la diferencia se encuentra principalmente en la maginitud de la predicción.
+
+Se observó en todos los modelos de variograma diferencias a nivel de varianza y de predicción para las distintas métricas de distancia. En particular, la distancia euclidiana presentó un Sill mayor en todos los modelos ajustados con respecto a la distancia shortest-path. A pesar de esto, ambas métricas indican en general, una relación en distancias más cortas que a nivel regional, sugiriendo un modelo ajustado a nivel de vecinos cercanos.
+
+Se destaca que la utilización de un modelo de vecinos cercanos en vez de un modelo regional podría entregar una mejor caracterización de las zonas con varios centros de cultivo y de su carga parasitaria, y dado que en distancias cortas la distancia euclidiana es homologable a la shortest-path cuando no hay barreras de por medio, esta puede ser una opción a futuro para evaluar la dependendia espacio-temporal considerando solo los vecinos cercanos.
+
+Por otro lado, a nivel regional los centros se distribuyen en barrios o asociación de concesiones (ACS) en donde estos sitios deben generar un plan de manejo común de caligidosis. Estas ACS fueron definidas por SERNAPESCA como división y ordenamiento general, pero no necesariamente con la consideración de la cercanía o similitud de cargas parasitarias de centros cercanos, o en qué nivel se encuentra esta dependendia espacial.
+
+En el presente trabajo, se observó que la dependencia espacial del promedio de los máximos por ciclo fue principalmente de distancias cortas tanto para los modelos utilizando distancia euclidiana como la el camino más corto, lo que es un indicio de que el manejo ideal de la carga parasitaria de los centros de cultivo podría no ser a nivel de ACS, sino teniendo en consideración centros con menor separación espacial.
+
+```{r}
+#| label: acs-kriging
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Matérn con distancia shortest-path, con los centros y sus distintas ACS.
+
+
+sites <- read_rds("1_data/joined_data.rds") |> janitor::clean_names()
+cod_acs <- sites |> count(codigo, acs) |> select(-n)
+aysen.summary <- aysen.summary |> left_join(cod_acs)
+ggplot(mapa_base)+
+  geom_raster(data = predicted_points@data,
+            aes(x = predicted_points@coords[,1] , 
+                y = predicted_points@coords[,2], 
+                fill = covariance_shortest$matern$pred),
+            alpha = 0.65, interpolate = F,
+            show.legend =F)+
+  geom_sf()+
+  geom_point(data = aysen.summary, size = 1,
+             aes(x =  lon,
+                 y = lat,
+                 colour = factor(acs)),
+             show.legend =T, alpha = 0.8 )+
+  coord_sf(xlim = c(-74.62, -72.64745), ylim = c(-46.25, -44))+
+  scale_fill_gradientn(colors = colores,
+                       limits = c(0, max(covariance_shortest$matern$pred)))+
+  scale_colour_viridis_d(option = "H")+
+  theme_bw()+
+  theme(legend.position = "bottom",
+        legend.box = "vertical")+
+  labs(x = "longitude",
+       y = "latitude", 
+       fill = "",
+       colour = "Adultos Centro",
+       title = "")+
+    custom_themes
+
+```
+
+Dada la dependencia a corta distancia, y la gran cantida de ACS distintas en centros cercanos, una potencial alternativa al manejo de los centros sería la coordinación de tratamiento entre centros vecinos, a diferencia de la coordinación entre ACS completas.
+
+\newpage
+
+# Trabajos futuros
+
+En este trabajo se consideró solamente el promedio de los máximos por ciclo en cada centro, pero la recopilación de los datos corresponde a una serie temporal cero-inflada con puntos en los que se van tratando los centros con distintos productos, por lo tanto las principales extensiones a considerar serían: 
+
++ Extensión a Kriging espacio-temporal, para tener en consideración la dependencia espacial y temporal de las cargas parasitarias.
+
++ Cokriging, con el fin de capturar la dependencia entre estadíos juveniles - adultos móviles - hembras ovígeras por separado, aprovechando la asociación entre ellos sin incluirlos como covariables para evitar endogeneidad.
+
++ Kriging Universal, para poder incluir covariables como temperatura, salinidad, tratamientos antiparasitarios y fase lunar, que podrían apotar información relevante para la estimación de las distintas cargas parasitarias.
+
++ Consideración del número de peces y la carga parasitaria, dado que en este trabajo se consideró solo las cargas promedio de adultos totales y no el impacto que tiene cada centro según la cantidad de peces que tiene.
+
+# Apéndice {#sec-appendix}
+
+```{r}
+#| label: matern-kriging-pred
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Matérn con distancia shortest-path y euclidiana
+
+krig_mapList$matern$pred
+
+
+```
+
+```{r}
+#| label: matern-kriging-pred-var
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación de varianza utilizando Kriging Lognormal Matérn con distancia shortest-path y euclidiana
+
+krig_mapList$matern$var.pred
+
+
+```
+
+```{r}
+#| label: gaussian-kriging-pred
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Gaussiano con distancia shortest-path y euclidiana
+
+krig_mapList$gaussian$pred
+
+
+```
+
+```{r}
+#| label: gaussian-kriging-pred-var
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Gaussiano con distancia shortest-path y euclidiana
+
+krig_mapList$gaussian$var.pred
+
+
+```
+
+```{r}
+#| label: spherical-kriging-pred
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Esférico con distancia shortest-path y euclidiana
+
+krig_mapList$spherical$pred
+
+
+```
+
+```{r}
+#| label: spherical-kriging-pred-var
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Esférico con distancia shortest-path y euclidiana
+
+krig_mapList$spherical$var.pred
+
+
+```
+
+```{r}
+#| label: cauchy-kriging-pred
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Cauchy con distancia shortest-path y euclidiana
+
+krig_mapList$cauchy$pred
+
+
+```
+
+```{r}
+#| label: cauchy-kriging-pred-var
+#| fig-height: 7
+#| fig-width: 7
+#| fig-cap: Interpolación utilizando Kriging Lognormal Cauchy con distancia shortest-path y euclidiana
+
+krig_mapList$cauchy$var.pred
+
+
+```

@@ -1,0 +1,16 @@
+# Objetivos {.unnumbered}
+
+## Objetivo General {.unnumbered}
+
+Evaluar el desempeño y validez de las distancias del camino más corto (shortest-path) con respecto a la distancia Euclidiana a través del Kriging Ordinario aplicado en datos reales de la carga total de adultos de *Caligus rogercresseyi* en la Región de Aysén durante el período 2015 - 2022.
+
+## Objetivos Específicos {.unnumbered}
+
+1. Evaluar ls modelos de covarianza generadas a partir de los distintos variogramas estimados utilizando la distancia obtenida a través del camino más corto y la distancia euclidiana.
+
+2. Comparar las predicciones generadas por el Kriging Ordinario y los distintos modelos entre sus respectivas métricas de distancia.
+
+3. Generar mapas en distintas utilizando distintos modelos de variograma que permitan caracterizar el riesgo a través de la covarianza a nivel global y local entre centros.
+
+4. Caracterizar la carga promedio por ciclo de adultos totales de *C. rogercresseyi* a través de mapas generados por la interpolación del Kriging Ordinario, para evaluar el grado de dependencia espacial del piojo del salmón.
+
